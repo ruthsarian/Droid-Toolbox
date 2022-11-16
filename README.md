@@ -8,8 +8,8 @@ Use at your own risk.
 ## Version 0.1
 Proof-of-concept. Needs better handling of displaying when more than 2 droids are found. Beacon needs to be customizable.
 
-![enter image description here](images/v0.1_01_start.jpg)
-![enter image description here](images/v0.1_02_menu.jpg)
-![enter image description here](images/v0.1_03_scanning.jpg)
-![enter image description here](images/v0.1_04_scan_results.jpg)
-![enter image description here](images/v0.1_05_beacon.jpg)
+![Image of a TTGO with the Droid Toolbox boot screen.](images/v0.1_01_start.jpg)
+![Image of a TTGO with the menu screen showing SCANNER band BEACON options.](images/v0.1_02_menu.jpg)
+![Image of a TTGO with the text 'SCANNING' across the screen.](images/v0.1_03_scanning.jpg)
+![Image of a TTGO showing a list of nearby droids including their bluetooth address, their affiliation, and personality chip.](images/v0.1_04_scan_results.jpg)
+![Image of a TTGO showing "BEACON ON" on the display.](images/v0.1_05_beacon.jpg)
