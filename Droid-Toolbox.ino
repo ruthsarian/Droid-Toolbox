@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.1 : ruthsarian@gmail.com
+/* Droid Toolbox v0.2 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * 
@@ -9,11 +9,21 @@
  * 
  * Designed to be used with a TTGO / LILYGO ESP32 Module with LCD display
  *   see: https://www.amazon.com/dp/B099MPFJ9M or https://www.amazon.com/dp/B098PYJ7ZL
- * 
+ *
+ * Required Libraries
+ *  Arduino ESP32 core: https://github.com/espressif/arduino-esp32
+ *  Arduino TFT_eSPI library: https://github.com/Bodmer/TFT_eSPI
+ *  
+ *    !! NOTICE !! 
+ *    
+ *    After installing or updating the TFT_eSPI you MUST edit User_Setup_Select.h as follows 
+ *      1. comment out the line "#include <User_Setup.h>" (line 22-ish)
+ *      2. uncomment the line "#include <User_Setups/Setup25_TTGO_T_Display.h>" (line 53-ish)
+ *      
+ *    Possible path for Windows users: %USERPROFILE%\Documents\Arduino\libraries\TFT_eSPI\User_Setup_Select.h
+ *  
  * References
  *   Arduino IDE setup: https://www.youtube.com/watch?v=b8254--ibmM
- *   Arduino TFT_eSPI library: https://github.com/Bodmer/TFT_eSPI
- *   Arduino ESP32 core: https://github.com/espressif/arduino-esp32
  *   TTGO pinout: https://i.redd.it/1usgojazvq561.jpg
  *   
  *   Misc:
@@ -27,13 +37,17 @@
  *   tft.width(), tft.height()
  *   tft.textWidth(), tft.fontHeight()
  *   tft.print() vs tft.println()
- *   
- *   keep text size to no smaller than 2
+  *   keep text size to no smaller than 2
  *
  * TODO
  *   sort by RSSI (signal strength) so closest appear at the top
  *   display RSSI
  *   display 1 droid at a time, use button press to step to next droid
+ *
+ * HISTORY
+ *   v0.2 : Added back button from both beacon and scanner.
+ *          Location beacon location is randomly selected.
+ *   v0.1 : Initial Release
  */
 
 #include <SPI.h>
@@ -49,11 +63,15 @@
 
 #define MAX_DROIDS 5
 #define BLE_SCAN_TIME 5   // maximum number of droids to report on
+#define PAYLOAD_SIZE 8
 
 BLEScan* pBLEScan;
 BLEAdvertising* pAdvertising;
-BLEAdvertisementData oAdvertisementData = BLEAdvertisementData();
 BLEAdvertisementData oScanResponseData = BLEAdvertisementData();
+
+//BLEAdvertisementData oAdvertisementData = BLEAdvertisementData();
+BLEAdvertisementData* pAdvertisementData = NULL;   // must be pointer so i can delete class then recreate it every time beacon changes
+                                                   // should i be using smart pointers?
 
 typedef struct droid_t {
     uint8_t chipid;
@@ -65,7 +83,6 @@ typedef struct droid_t {
 Droid droids[MAX_DROIDS];
 uint8_t droid_count = 0;
 
-/*
 const uint8_t SWGE_LOCATION_BEACON_PAYLOAD[] = {
   0x83, 0x01, // manufacturer's id: 0x0183
   0x0A,       // type of beacon (location beacon)
@@ -86,15 +103,13 @@ const uint8_t SWGE_DROID_BEACON_PAYLOAD[] = {
   0x01,       // personality chip ID
 };
 
+/*
 const uint8_t SWGE_BEACON_NAME[] = {
   0x44, 0x54, 0x4F, 0x49, 0x44   // 'DROID'
 };
 */
 
-uint8_t payload[] = {
-  0x83, 0x01, 0x0A, 0x04, 0x01, 0x02, 0xA6, 0x01                // Location Beacon
-};
-uint8_t payload_size = (sizeof(payload)/sizeof(uint8_t));
+uint8_t payload[PAYLOAD_SIZE];
 
 typedef enum {
   SPLASH,
@@ -436,6 +451,8 @@ void IRAM_ATTR button1() {
         break;
       case MODE_BEACON:
       case MODE_BEACON_OFF:
+        init_advertisement_data();
+        set_payload_location_beacon(esp_random());
         pAdvertising->start();
         state = MODE_BEACON_ON;
         tft_update = true;
@@ -472,10 +489,46 @@ void IRAM_ATTR button2() {
         }
         tft_update = true;
         break;
+
+      case MODE_BEACON:
+      case MODE_BEACON_ON:
+      case MODE_BEACON_OFF:
+      case MODE_SCANNER_RESULTS:
+        pAdvertising->stop();
+        state = TOP_MENU;
+        tft_update = true;
+        break;
     }
 
     last_time_btn2 = millis();
   }
+}
+
+void load_payload_location_beacon_data() {
+  memcpy(payload, SWGE_LOCATION_BEACON_PAYLOAD, sizeof(uint8_t) * PAYLOAD_SIZE);
+}
+
+void load_payload_droid_beacon_data() {
+  memcpy(payload, SWGE_DROID_BEACON_PAYLOAD, sizeof(uint8_t) * PAYLOAD_SIZE);
+}
+
+void set_payload_droid_beacon() {
+  load_payload_droid_beacon_data();
+}
+
+void init_advertisement_data() {
+  if (pAdvertisementData != NULL) {
+    delete pAdvertisementData;
+  }
+  pAdvertisementData = new BLEAdvertisementData();
+  pAdvertisementData->setName("DROIDBOX");
+}
+
+void set_payload_location_beacon(uint8_t location) {
+  load_payload_location_beacon_data();
+  payload[4] = (location % 7) + 1;
+  pAdvertisementData->setManufacturerData(std::string(reinterpret_cast<char*>(payload), PAYLOAD_SIZE));
+  pAdvertising->setAdvertisementData(*pAdvertisementData);
 }
 
 void setup() {
@@ -501,11 +554,12 @@ void setup() {
   pBLEScan->setWindow(99);  // less or equal setInterval value
 
   // setup BLE advertising (beacon)
-  oAdvertisementData.setManufacturerData(std::string(reinterpret_cast<char*>(payload), payload_size));
-  oAdvertisementData.setName("DROIDBOX");
   pAdvertising = BLEDevice::getAdvertising();
-  pAdvertising->setAdvertisementData(oAdvertisementData);
   pAdvertising->setScanResponseData(oScanResponseData);
+
+  // setup beacon payload
+  init_advertisement_data();
+  set_payload_location_beacon(esp_random());
 
   // init serial monitor
   Serial.begin(115200);
