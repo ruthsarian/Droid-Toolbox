@@ -16,15 +16,27 @@
  *  
  *    !! NOTICE !! 
  *    
- *    After installing or updating the TFT_eSPI you MUST edit User_Setup_Select.h as follows 
+ *    After installing or updating the TFT_eSPI library you MUST edit User_Setup_Select.h as follows 
  *      1. comment out the line "#include <User_Setup.h>" (line 22-ish)
  *      2. uncomment the line "#include <User_Setups/Setup25_TTGO_T_Display.h>" (line 53-ish)
  *      
  *    Possible path for Windows users: %USERPROFILE%\Documents\Arduino\libraries\TFT_eSPI\User_Setup_Select.h
- *  
+ *
+ * Arduino IDE Board Configuration (defaults)
+ *  Board: ESP32 Dev Module
+ *  Upload Speed: 921600
+ *  CPU Freq: 240MHz (WiFI/BT)
+ *  Flash Freq: 80MHz
+ *  Flash Mode: QIO
+ *  Flash Size: 4MB (32Mb)
+ *  Partition Scheme: Default 4MB with spiffs
+ *  Core Debug Level: None
+ *  PSRAM: Disabled
+ * 
  * References
  *   Arduino IDE setup: https://www.youtube.com/watch?v=b8254--ibmM
  *   TTGO pinout: https://i.redd.it/1usgojazvq561.jpg
+ *   Programming the bin w/o Arduino IDE: https://www.aranacorp.com/en/generating-and-uploading-bin-files-for-esp32/
  *   
  *   Misc:
  *     https://github.com/Bodmer/TFT_eSPI/blob/master/TFT_eSPI.h
@@ -40,9 +52,28 @@
   *   keep text size to no smaller than 2
  *
  * TODO
- *   sort by RSSI (signal strength) so closest appear at the top
- *   display RSSI
- *   display 1 droid at a time, use button press to step to next droid
+ *   enable SHORT and LONG button press detection in order to increase user input options
+ *   scanner:
+ *     display RSSI
+ *     sort by RSSI (signal strength) so closest appear at the top
+ *     display 1 droid at a time, use button press to step to next droid
+ *   beacon:
+ *     allow for beacon customization
+ *       choose between droid and location beacons
+ *       droid beacon:
+ *         set affiliation
+ *         set personality chip
+ *       location beacon:
+ *         set location
+ *         set minimum reaction interval
+ *   raw commands:
+ *     ability to connect to a single droid and send 'raw' commands
+ *        play specific track from specific audio group
+ *        control LEDs (?)
+ *        control motors (is this a GOOD idea? probably not...)
+ *        other ??
+ *   some kind of 'sleep' feature for power saving? would that even be useful?
+ *   screensaver ?
  *
  * HISTORY
  *   v0.2 : Added back button from both beacon and scanner.
