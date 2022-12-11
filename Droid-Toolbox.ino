@@ -203,14 +203,14 @@ void display_scanner_results() {
   tft.setTextColor(TFT_DARKGREY);
   tft_println_center(msg_scanner_results);
 
-  // find where to start printing droid details so that it is vertically centered
-  y = tft.fontHeight();
-  tft.setTextSize(2);
-  y += (tft.fontHeight() * 3);
-  tft.setCursor(0, (tft.height()/2) - (y/2));
-
   // add a gap after the header
   if (droid_count > 0) {
+
+    // find where to start printing droid details so that it is vertically centered
+    y = tft.fontHeight();
+    tft.setTextSize(2);
+    y += (tft.fontHeight() * 3);
+    tft.setCursor(0, (tft.height()/2) - (y/2));
 
     // print droid personality
     tft.setTextSize(3);
@@ -298,8 +298,11 @@ void display_scanner_results() {
     tft.setCursor((tft.width() - tft.textWidth(msg))/2, tft.height() - tft.fontHeight());
     tft.print(msg);
 
+  // display message that no droids were found
   } else {
+    tft.setTextSize(3);
     tft.setTextColor(TFT_YELLOW);
+    tft.setCursor(0, (tft.height()/2) - tft.fontHeight());
     tft_println_center("No Droids");
     tft_println_center("In Area");
   }
@@ -523,19 +526,6 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     }
   }
 };
-
-//
-// TODO
-//  review: https://circuitdigest.com/microcontroller-projects/ble-based-proximity-control-using-esp32
-//  probably need to revisit how we scan and process results 
-//
-//
-// BLEScanResults foundDevices = pBLEScan->start(scanTime, false);
-//
-// but is it useful? BLEScanResults only has a count and an index function? hmm...
-// see: https://github.com/nkolban/esp32-snippets/blob/master/cpp_utils/BLEScan.h
-//
-
 
 void ble_scan() {
   // get ready to count some droids
