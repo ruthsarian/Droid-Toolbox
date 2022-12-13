@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.4 : ruthsarian@gmail.com
+/* Droid Toolbox v0.5 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * 
@@ -78,6 +78,7 @@
  *   sleep/wake system to conserve power
  *
  * HISTORY
+ *   v0.5 : tbd
  *   v0.4 : Added deep sleep/hibernation
  *          Added initial ability to connect to droid with long button 1 press while viewing droid in scan results
  *            Connection is currently a demo; connect, tell droid to play a sound, then disconnect. 
@@ -98,7 +99,7 @@
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
 
-#define MSG_VERSION       "v0.4"
+#define MSG_VERSION       "v0.5"
 
 #define BUTTON1_PIN       0   // button 1 on the TTGO is GPIO 0 
 #define BUTTON2_PIN       35  // button 2 on the TTGO is GPIO 35
