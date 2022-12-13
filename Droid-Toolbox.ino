@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.3 : ruthsarian@gmail.com
+/* Droid Toolbox v0.4 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * 
@@ -75,10 +75,13 @@
  *        control LEDs (?)
  *        control motors (is this a GOOD idea? probably not...)
  *        other ??
- *   some kind of 'sleep' feature for power saving? would that even be useful?
- *   screensaver ?
+ *   sleep/wake system to conserve power
  *
  * HISTORY
+ *   v0.4 : Added deep sleep/hibernation
+ *          Added initial ability to connect to droid with long button 1 press while viewing droid in scan results
+ *            Connection is currently a demo; connect, tell droid to play a sound, then disconnect. 
+ *            Will improve upon this in the next version.
  *   v0.3 : Long/Short button press detection
  *          Droid report is paged; shows 1 droid at a time
  *          Droid report sorts droids by RSSI value
@@ -95,10 +98,10 @@
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
 
-#define MSG_VERSION       "v0.3"
+#define MSG_VERSION       "v0.4"
 
-#define BUTTON1_PIN       0
-#define BUTTON2_PIN       35
+#define BUTTON1_PIN       0   // button 1 on the TTGO is GPIO 0 
+#define BUTTON2_PIN       35  // button 2 on the TTGO is GPIO 35
 #define LAZY_DEBOUNCE     10  // time to wait after a button press before considering it a good press
 #define SHORT_PRESS_TIME  500 // maximum time, in milliseconds, that a button can be held before release and be considered a SHORT press
 
@@ -106,10 +109,22 @@
 #define BLE_SCAN_TIME     5   // how many seconds to scan
 
 #define PAYLOAD_SIZE      8   // size, in bytes, of a beacon payload
-#define MSG_LEN_MAX       16
+#define MSG_LEN_MAX       32
 #define DROID_ADDR_LEN    20
 
+#define SLEEP_AFTER       5 * 60 * 1000   // how many milliseconds of inactivity before going to sleep/hibernation
+#define WAKEUP_BUTTON     GPIO_NUM_0      // wake up when button 1 is pressed _ONLY_IF_ it's been enabled in setup(); otherwise the reset button will wake up the TTGO
+#define WAKEUP_LEVEL      LOW             // wake up from sleep when the button is pressed (LOW)
+
+uint32_t  last_activity;
+
+BLEUUID serviceUUID("09b600a0-3e42-41fc-b474-e9c0c8f0c801");
+BLEUUID     cmdUUID("09b600b1-3e42-41fc-b474-e9c0c8f0c801");
+BLEUUID  notifyUUID("09b600b0-3e42-41fc-b474-e9c0c8f0c801");    // not used, but keeping it for future reference
+
 BLEScan* pBLEScan;
+BLEClient* pClient;
+BLERemoteCharacteristic* pRemoteCharacteristicCmd = NULL;
 BLEAdvertising* pAdvertising;
 BLEAdvertisementData oScanResponseData = BLEAdvertisementData();
 BLEAdvertisementData* pAdvertisementData = NULL;   // must be pointer so i can delete class then recreate it every time beacon changes
@@ -118,9 +133,7 @@ BLEAdvertisementData* pAdvertisementData = NULL;   // must be pointer so i can d
 typedef struct droid_t {
     uint8_t chipid;
     uint8_t affid;
-    int rssi;
-    char addr[DROID_ADDR_LEN];
-    //BLEAddress address;
+    BLEAdvertisedDevice* pAdvertisedDevice;
 } Droid;
 
 Droid droids[MAX_DROIDS];
@@ -147,13 +160,12 @@ const uint8_t SWGE_DROID_BEACON_PAYLOAD[] = {
   0x01,       // personality chip ID
 };
 
-/*
-const uint8_t SWGE_BEACON_NAME[] = {
-  0x44, 0x54, 0x4F, 0x49, 0x44   // 'DROID'
-};
-*/
-
 uint8_t payload[PAYLOAD_SIZE];
+
+typedef enum {
+  SHORT_PRESS,
+  LONG_PRESS
+} button_press_t;
 
 typedef enum {
   SPLASH,
@@ -162,7 +174,11 @@ typedef enum {
   MODE_SCANNER_SCANNING,
   MODE_SCANNER_RESULTS,
   MODE_SCANNER_CONNECTING,
+  MODE_SCANNER_CONNECT_FAILED,
   MODE_SCANNER_CONNECTED,
+  MODE_SOUND_SELECT_GROUP,
+  MODE_SOUND_SELECT_TRACK,
+  MODE_SOUND_PLAY,
   MODE_BEACON,
   MODE_BEACON_OFF,
   MODE_BEACON_ON
@@ -278,17 +294,19 @@ void display_scanner_results() {
         snprintf(msg, MSG_LEN_MAX, "Unknown (%d)", droids[current_droid].affid);
         tft_println_center(msg);
         break;
+
+
     }
 
     // print Bluetooth MAC address
     tft.setTextSize(2);
     tft.setTextColor(TFT_BLUE);
-    tft_println_center(droids[current_droid].addr);
+    tft_println_center(droids[current_droid].pAdvertisedDevice->getAddress().toString().c_str());
 
     // print RSSI
     tft.setTextSize(2);
     tft.setTextColor(TFT_PURPLE);
-    snprintf(msg, MSG_LEN_MAX, "rssi: %ddBm", droids[current_droid].rssi);
+    snprintf(msg, MSG_LEN_MAX, "rssi: %ddBm", droids[current_droid].pAdvertisedDevice->getRSSI());
     tft_println_center(msg);
 
     // print 
@@ -402,7 +420,6 @@ void display_splash() {
   tft.print(msg_version);
 }
 
-
 void update_display() {
 
   uint16_t y = 0;
@@ -450,6 +467,28 @@ void update_display() {
       state = MODE_SCANNER_SCANNING;
       break;
 
+    case MODE_SCANNER_CONNECTING:
+      tft.setTextSize(3);
+      tft.setTextColor(TFT_ORANGE);
+      tft.setCursor(0, (tft.height() / 2) - (tft.fontHeight()/2));
+      tft_println_center("CONNECTING");
+      break;
+
+    case MODE_SCANNER_CONNECTED:
+      tft.setTextSize(3);
+      tft.setTextColor(TFT_GREEN);
+      tft.setCursor(0, (tft.height() / 2) - (tft.fontHeight()/2));
+      tft_println_center("CONNECTED");
+      break;
+
+    case MODE_SCANNER_CONNECT_FAILED:
+      tft.setTextSize(3);
+      tft.setTextColor(TFT_RED);
+      tft.setCursor(0, (tft.height() / 2) - tft.fontHeight());
+      tft_println_center("CONNECT");
+      tft_println_center("FAILED");
+      break;
+
     case TOP_MENU:
       display_top_menu();
       break;
@@ -462,12 +501,39 @@ void update_display() {
   tft_update = false;
 }
 
-// BLE Callback
+
+void load_payload_location_beacon_data() {
+  memcpy(payload, SWGE_LOCATION_BEACON_PAYLOAD, sizeof(uint8_t) * PAYLOAD_SIZE);
+}
+
+void load_payload_droid_beacon_data() {
+  memcpy(payload, SWGE_DROID_BEACON_PAYLOAD, sizeof(uint8_t) * PAYLOAD_SIZE);
+}
+
+void set_payload_droid_beacon() {
+  load_payload_droid_beacon_data();
+}
+
+void init_advertisement_data() {
+  if (pAdvertisementData != NULL) {
+    delete pAdvertisementData;
+  }
+  pAdvertisementData = new BLEAdvertisementData();
+  pAdvertisementData->setName("DROIDBOX");
+}
+
+void set_payload_location_beacon(uint8_t location) {
+  load_payload_location_beacon_data();
+  payload[4] = (location % 7) + 1;
+  pAdvertisementData->setManufacturerData(std::string(reinterpret_cast<char*>(payload), PAYLOAD_SIZE));
+  pAdvertising->setAdvertisementData(*pAdvertisementData);
+}
+
+// BLE Advertising Callback
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
   void onResult(BLEAdvertisedDevice advertisedDevice) {
     uint8_t *rawdata, rawdata_len, i, pos;
     uint16_t mfid;
-    char tmp[20];
   
     // do not add this object if it doesn't have the name DROID or if it does not have manufacturer data
     if (advertisedDevice.getName() != "DROID" || !advertisedDevice.haveManufacturerData()) {
@@ -484,11 +550,6 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
       return;
     }
 
-    Serial.print("Found DROID: ");
-    Serial.print(advertisedDevice.getAddress().toString().c_str());
-    Serial.print(", RSSI: ");
-    Serial.println(advertisedDevice.getRSSI());
-
     // the droid list is sorted from strongest to weakest signal strength (RSSI) value
     // locate where in the list this new droid will be inserted
     pos = 0;
@@ -496,7 +557,7 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
 
       // find where to insert droid into list; higher RSSI come first in list
       for (pos=0;pos<droid_count;pos++) {
-        if (droids[pos].rssi < advertisedDevice.getRSSI()) {
+        if (droids[pos].pAdvertisedDevice->getRSSI() < advertisedDevice.getRSSI()) {
           break;
         }
       }
@@ -509,7 +570,10 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
       // push droids with a lower RSSI down the list
       for (i = droid_count;i>pos;i--) {
         if (i < MAX_DROIDS) {
-          droids[i] = droids[i-1];
+          droids[i] = droids[i-1];                  // move droid to new position in array
+          droids[i-1].pAdvertisedDevice = NULL;     // clear the previous position in prep for the new droid
+        } else {
+          delete droids[i-1].pAdvertisedDevice;
         }
       }
     }
@@ -517,8 +581,23 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     // store found droid's information
     droids[pos].chipid = rawdata[rawdata_len-1];
     droids[pos].affid = (rawdata[rawdata_len-2] - 0x80) / 2;
-    strncpy(droids[pos].addr, advertisedDevice.getAddress().toString().c_str(), DROID_ADDR_LEN);
-    droids[pos].rssi = advertisedDevice.getRSSI();
+
+    // need to store a pointer to an AdvertisedDevice object for this device because
+    // it's the only thing i can use to connect to the droid successfully
+
+    // first check to make sure there isn't already a pointer and if there is delete it
+    if ( droids[pos].pAdvertisedDevice != NULL ) {
+      Serial.println("delete old AdvertsidedDevice object");
+      delete droids[pos].pAdvertisedDevice;
+    }
+
+    // store the droid's AdvertsiedDevice object
+    droids[pos].pAdvertisedDevice = new BLEAdvertisedDevice(advertisedDevice);
+
+    Serial.print("Droid Found -- BD_ADDR: ");
+    Serial.print(droids[pos].pAdvertisedDevice->getAddress().toString().c_str());
+    Serial.print(", RSSI: ");
+    Serial.println(advertisedDevice.getRSSI());
 
     // increment counter
     if (droid_count < MAX_DROIDS) {
@@ -526,6 +605,48 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     }
   }
 };
+
+bool connectToDroid() {
+  uint8_t login_value[] = {0x22, 0x20, 0x01};
+  uint8_t cmd_a[] = {0x27, 0x42, 0x0f, 0x44, 0x44, 0x00, 0x1f, 0x07};
+  uint8_t cmd_b[] = {0x27, 0x42, 0x0f, 0x44, 0x44, 0x00, 0x18, 0x00};
+
+  BLEClient* pClient = BLEDevice::createClient();
+
+  Serial.print("Forming a connection to ");
+  Serial.println(droids[current_droid].pAdvertisedDevice->getAddress().toString().c_str());
+
+  if (!pClient->connect( droids[current_droid].pAdvertisedDevice )) {
+    Serial.println("Connection failed.");
+    return false;
+  }
+
+  BLERemoteService* pRemoteService = pClient->getService(serviceUUID);
+  if (pRemoteService == nullptr) {
+    Serial.println("Failed to find droid service.");
+    pClient->disconnect();
+    return false;
+  }
+
+  pRemoteCharacteristicCmd = pRemoteService->getCharacteristic(cmdUUID);
+  if (pRemoteCharacteristicCmd == nullptr) {
+    Serial.println("Failed to find droid chracteristic.");
+    pClient->disconnect();
+    return false;
+  }
+
+  pRemoteCharacteristicCmd->writeValue(login_value, sizeof(login_value));
+  delay(100);
+  pRemoteCharacteristicCmd->writeValue(login_value, sizeof(login_value));
+  delay(100);
+  pRemoteCharacteristicCmd->writeValue(cmd_a, sizeof(cmd_a));
+  delay(100);
+  pRemoteCharacteristicCmd->writeValue(cmd_b, sizeof(cmd_b));
+  delay(100);
+
+  pClient->disconnect();
+  return true;
+}
 
 void ble_scan() {
   // get ready to count some droids
@@ -541,11 +662,6 @@ void ble_scan() {
   // delete results fromBLEScan buffer to release memory
   pBLEScan->clearResults();
 }
-
-typedef enum {
-  SHORT_PRESS,
-  LONG_PRESS
-} button_press_t;
 
 void button1(button_press_t press_type);    // trying to use an enum as a parameter triggers a bug in arduino. adding an explicit prototype resolves the issue.
 void button1(button_press_t press_type) {
@@ -574,8 +690,12 @@ void button1(button_press_t press_type) {
       tft_update = true;
       break;
     case MODE_SCANNER_RESULTS:
-      if (press_type == SHORT_PRESS && droid_count > 0) {
-        current_droid = (current_droid + 1) % droid_count;
+      if (droid_count > 0) {
+        if (press_type == SHORT_PRESS) {
+          current_droid = (current_droid + 1) % droid_count;
+        } else {
+          state = MODE_SCANNER_CONNECTING;
+        }
       } else {
         state = MODE_SCANNER;
       }
@@ -658,6 +778,8 @@ void button_handler() {
     }
     last_btn1_state = now_btn1_state;
     last_btn1_time = now_time;
+
+    last_activity = millis();
   }
 
   if (now_btn2_state != last_btn2_state && now_time - last_btn2_time > LAZY_DEBOUNCE) {
@@ -670,37 +792,14 @@ void button_handler() {
     }
     last_btn2_state = now_btn2_state;
     last_btn2_time = now_time;
+
+    last_activity = millis();
   }
-}
-
-void load_payload_location_beacon_data() {
-  memcpy(payload, SWGE_LOCATION_BEACON_PAYLOAD, sizeof(uint8_t) * PAYLOAD_SIZE);
-}
-
-void load_payload_droid_beacon_data() {
-  memcpy(payload, SWGE_DROID_BEACON_PAYLOAD, sizeof(uint8_t) * PAYLOAD_SIZE);
-}
-
-void set_payload_droid_beacon() {
-  load_payload_droid_beacon_data();
-}
-
-void init_advertisement_data() {
-  if (pAdvertisementData != NULL) {
-    delete pAdvertisementData;
-  }
-  pAdvertisementData = new BLEAdvertisementData();
-  pAdvertisementData->setName("DROIDBOX");
-}
-
-void set_payload_location_beacon(uint8_t location) {
-  load_payload_location_beacon_data();
-  payload[4] = (location % 7) + 1;
-  pAdvertisementData->setManufacturerData(std::string(reinterpret_cast<char*>(payload), PAYLOAD_SIZE));
-  pAdvertising->setAdvertisementData(*pAdvertisementData);
 }
 
 void setup() {
+  uint8_t i;
+
   // setup display
   tft.init();
   tft.fillScreen(TFT_BLACK);
@@ -728,6 +827,18 @@ void setup() {
   init_advertisement_data();
   set_payload_location_beacon(esp_random());
 
+  // define deep sleep wakeup trigger; if commented out ESP32 goes into hibernation instead of deep sleep and only wakes up with the reset button
+  // memory is lost from deep sleep; for our purposes deep sleep and hibernation are the same thing
+  //esp_sleep_enable_ext0_wakeup(WAKEUP_BUTTON, WAKEUP_LEVEL);
+
+  // initialize the sleep monitor timer
+  last_activity = millis();
+
+  // initialize the droid array
+  for(i=0;i<MAX_DROIDS;i++) {
+    droids[i].pAdvertisedDevice = NULL;
+  }
+
   // init serial monitor
   Serial.begin(115200);
   Serial.println("Ready!");
@@ -744,9 +855,38 @@ void loop() {
       state = MODE_SCANNER_RESULTS;
       tft_update = true;
       break;
+    case MODE_SCANNER_CONNECTING:
+      update_display();
+      if( connectToDroid() ) {
+        state = MODE_SCANNER_CONNECTED;
+      } else {
+        state = MODE_SCANNER_CONNECT_FAILED;
+      }
+      tft_update = true;
+      break;
+    case MODE_SCANNER_CONNECTED:
+    case MODE_SCANNER_CONNECT_FAILED:
+      delay(2000);
+      state = MODE_SCANNER_RESULTS;
+      tft_update = true;
+      break;
     default:
       break;
   }
 
   update_display();
+
+  // inactivity sleep check; screen will blank when ESP32 goes to sleep
+  // press reset button to wakeup
+  if (millis() - last_activity > SLEEP_AFTER) {
+
+    // do not go to sleep if the beacon is active
+    if (state != MODE_BEACON_ON) {
+      Serial.println("Going to sleep.");
+      delay(100);
+      esp_deep_sleep_start();
+    } else {
+      last_activity = millis();
+    }
+  }
 }
