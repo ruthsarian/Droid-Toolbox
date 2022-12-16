@@ -78,7 +78,9 @@
  *   sleep/wake system to conserve power
  *
  * HISTORY
- *   v0.5 : tbd
+ *   v0.5 : Added ability to connect to droid from scan results using a long-press of button 1
+ *          Droid plays activation sound upon connection
+ *          Group and track can be selected and played through the droid.
  *   v0.4 : Added deep sleep/hibernation
  *          Added initial ability to connect to droid with long button 1 press while viewing droid in scan results
  *            Connection is currently a demo; connect, tell droid to play a sound, then disconnect. 
@@ -123,12 +125,13 @@ BLEUUID serviceUUID("09b600a0-3e42-41fc-b474-e9c0c8f0c801");
 BLEUUID     cmdUUID("09b600b1-3e42-41fc-b474-e9c0c8f0c801");
 BLEUUID  notifyUUID("09b600b0-3e42-41fc-b474-e9c0c8f0c801");    // not used, but keeping it for future reference
 
-BLEScan* pBLEScan;
-BLEClient* pClient;
-BLERemoteCharacteristic* pRemoteCharacteristicCmd = NULL;
-BLEAdvertising* pAdvertising;
+BLEScan* pBLEScan = nullptr;
+BLEClient* pClient = nullptr;
+BLERemoteService* pRemoteService = nullptr;
+BLERemoteCharacteristic* pRemoteCharacteristicCmd = nullptr;
+BLEAdvertising* pAdvertising = nullptr;
 BLEAdvertisementData oScanResponseData = BLEAdvertisementData();
-BLEAdvertisementData* pAdvertisementData = NULL;   // must be pointer so i can delete class then recreate it every time beacon changes
+BLEAdvertisementData* pAdvertisementData = nullptr;   // must be pointer so i can delete class then recreate it every time beacon changes
                                                    // should i be using smart pointers?
 
 typedef struct droid_t {
@@ -140,6 +143,8 @@ typedef struct droid_t {
 Droid droids[MAX_DROIDS];
 uint8_t droid_count = 0;
 uint8_t current_droid = 0;
+uint8_t current_group = 0;
+uint8_t current_track = 0;
 
 const uint8_t SWGE_LOCATION_BEACON_PAYLOAD[] = {
   0x83, 0x01, // manufacturer's id: 0x0183
@@ -179,6 +184,7 @@ typedef enum {
   MODE_SCANNER_CONNECTED,
   MODE_SOUND_SELECT_GROUP,
   MODE_SOUND_SELECT_TRACK,
+  MODE_SOUND_SELECT_PLAY,
   MODE_SOUND_PLAY,
   MODE_BEACON,
   MODE_BEACON_OFF,
@@ -295,8 +301,6 @@ void display_scanner_results() {
         snprintf(msg, MSG_LEN_MAX, "Unknown (%d)", droids[current_droid].affid);
         tft_println_center(msg);
         break;
-
-
     }
 
     // print Bluetooth MAC address
@@ -421,9 +425,38 @@ void display_splash() {
   tft.print(msg_version);
 }
 
-void update_display() {
+void display_track_select() {
+  char msg[MSG_LEN_MAX];
+  char M[] = "M";
 
-  uint16_t y = 0;
+  uint8_t gap = 0;
+
+  // display instruction
+  tft.setTextSize(3);
+
+  gap = (tft.height() - (tft.fontHeight() * 3))/3;
+
+  tft.setCursor(tft.textWidth(M)*2, tft.getCursorY() + gap - 2);
+  tft.setTextColor(TFT_BLUE);
+  tft.print("Group: ");
+  tft.setTextColor((state == MODE_SOUND_SELECT_GROUP) ? TFT_GREEN : TFT_DARKGREEN);
+  snprintf(msg, MSG_LEN_MAX, "%d", (current_group + 1));
+  tft.println(msg);
+
+  tft.setCursor(tft.textWidth(M)*2, tft.getCursorY() + 5);
+  tft.setTextColor(TFT_RED);
+  tft.print("Track: ");
+  tft.setTextColor((state == MODE_SOUND_SELECT_TRACK) ? TFT_GREEN : TFT_DARKGREEN);
+  snprintf(msg, MSG_LEN_MAX, "%d", (current_track + 1));
+  tft.println(msg);
+
+  tft.setCursor(0, tft.getCursorY() + gap);
+  tft.setTextColor((state == MODE_SOUND_SELECT_PLAY) ? TFT_GREEN : TFT_DARKGREEN);
+  tft_println_center("PLAY");
+}
+
+void update_display() {
+  uint16_t y;
 
   if (tft_update != true) {
     return;
@@ -482,6 +515,13 @@ void update_display() {
       tft_println_center("CONNECTED");
       break;
 
+    case MODE_SOUND_SELECT_GROUP:
+    case MODE_SOUND_SELECT_TRACK:
+    case MODE_SOUND_SELECT_PLAY:
+    case MODE_SOUND_PLAY:
+      display_track_select();
+      break;
+
     case MODE_SCANNER_CONNECT_FAILED:
       tft.setTextSize(3);
       tft.setTextColor(TFT_RED);
@@ -502,7 +542,6 @@ void update_display() {
   tft_update = false;
 }
 
-
 void load_payload_location_beacon_data() {
   memcpy(payload, SWGE_LOCATION_BEACON_PAYLOAD, sizeof(uint8_t) * PAYLOAD_SIZE);
 }
@@ -516,7 +555,7 @@ void set_payload_droid_beacon() {
 }
 
 void init_advertisement_data() {
-  if (pAdvertisementData != NULL) {
+  if (pAdvertisementData != nullptr) {
     delete pAdvertisementData;
   }
   pAdvertisementData = new BLEAdvertisementData();
@@ -572,7 +611,7 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
       for (i = droid_count;i>pos;i--) {
         if (i < MAX_DROIDS) {
           droids[i] = droids[i-1];                  // move droid to new position in array
-          droids[i-1].pAdvertisedDevice = NULL;     // clear the previous position in prep for the new droid
+          droids[i-1].pAdvertisedDevice = nullptr;     // clear the previous position in prep for the new droid
         } else {
           delete droids[i-1].pAdvertisedDevice;
         }
@@ -587,7 +626,7 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     // it's the only thing i can use to connect to the droid successfully
 
     // first check to make sure there isn't already a pointer and if there is delete it
-    if ( droids[pos].pAdvertisedDevice != NULL ) {
+    if ( droids[pos].pAdvertisedDevice != nullptr ) {
       Serial.println("delete old AdvertsidedDevice object");
       delete droids[pos].pAdvertisedDevice;
     }
@@ -607,28 +646,38 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
   }
 };
 
-bool connectToDroid() {
+void droid_disconnect() {
+  // disconnect from any previous connection 
+  if (pClient != nullptr && pClient->isConnected()) {
+    pClient->disconnect();
+  }
+}
+
+bool droid_connect() {
   uint8_t login_value[] = {0x22, 0x20, 0x01};
   uint8_t cmd_a[] = {0x27, 0x42, 0x0f, 0x44, 0x44, 0x00, 0x1f, 0x07};
   uint8_t cmd_b[] = {0x27, 0x42, 0x0f, 0x44, 0x44, 0x00, 0x18, 0x00};
 
-  BLEClient* pClient = BLEDevice::createClient();
+  // end any current connection
+  droid_disconnect();
 
-  Serial.print("Forming a connection to ");
+  // create a new connection
+  Serial.print("Connecting to ");
   Serial.println(droids[current_droid].pAdvertisedDevice->getAddress().toString().c_str());
-
   if (!pClient->connect( droids[current_droid].pAdvertisedDevice )) {
     Serial.println("Connection failed.");
     return false;
   }
 
-  BLERemoteService* pRemoteService = pClient->getService(serviceUUID);
+  // locate the service we want to talk to
+  pRemoteService = pClient->getService(serviceUUID);
   if (pRemoteService == nullptr) {
     Serial.println("Failed to find droid service.");
     pClient->disconnect();
     return false;
   }
 
+  // get the characteristic that receives commands
   pRemoteCharacteristicCmd = pRemoteService->getCharacteristic(cmdUUID);
   if (pRemoteCharacteristicCmd == nullptr) {
     Serial.println("Failed to find droid chracteristic.");
@@ -636,20 +685,41 @@ bool connectToDroid() {
     return false;
   }
 
+  // send command to 'login'; will also disable droid's beacon until disconnect()
   pRemoteCharacteristicCmd->writeValue(login_value, sizeof(login_value));
   delay(100);
   pRemoteCharacteristicCmd->writeValue(login_value, sizeof(login_value));
   delay(100);
+
+  // make droid play activation noise
   pRemoteCharacteristicCmd->writeValue(cmd_a, sizeof(cmd_a));
   delay(100);
   pRemoteCharacteristicCmd->writeValue(cmd_b, sizeof(cmd_b));
   delay(100);
 
-  pClient->disconnect();
   return true;
 }
 
+void droid_play_track() {
+  uint8_t cmd_set_group[]  = {0x27, 0x42, 0x0f, 0x44, 0x44, 0x00, 0x1f, 0x07};
+  uint8_t cmd_play_track[] = {0x27, 0x42, 0x0f, 0x44, 0x44, 0x00, 0x18, 0x00};
+
+  if (pClient->isConnected() && pRemoteCharacteristicCmd != nullptr) {
+    cmd_set_group[7]  = current_group % 12;
+    cmd_play_track[7] = current_track & 0xFF;
+
+    pRemoteCharacteristicCmd->writeValue(cmd_set_group, sizeof(cmd_set_group));
+    delay(100);
+    pRemoteCharacteristicCmd->writeValue(cmd_play_track, sizeof(cmd_play_track));
+    delay(100);
+  }
+}
+
 void ble_scan() {
+
+  // if we have any connections, disconnect.
+  droid_disconnect();
+
   // get ready to count some droids
   droid_count = 0;
 
@@ -700,6 +770,28 @@ void button1(button_press_t press_type) {
       } else {
         state = MODE_SCANNER;
       }
+      tft_update = true;
+      break;
+    case MODE_SOUND_SELECT_GROUP:
+      if (press_type == SHORT_PRESS) {
+        current_group = (current_group + 1) % 12;
+        current_track = 0;
+      } else {
+        state = MODE_SOUND_SELECT_TRACK;
+      }
+      tft_update = true;
+      break;
+    case MODE_SOUND_SELECT_TRACK:
+      if (press_type == SHORT_PRESS) {
+        current_track = (current_track + 1) % 99;
+      } else {
+        state = MODE_SOUND_SELECT_PLAY;
+      }
+      tft_update = true;
+      break;
+    case MODE_SOUND_SELECT_PLAY:
+      Serial.println("Play selected!");
+      state = MODE_SOUND_PLAY;
       tft_update = true;
       break;
     case MODE_BEACON:
@@ -753,6 +845,28 @@ void button2(button_press_t press_type) {
     case MODE_SCANNER_RESULTS:
       pAdvertising->stop();
       state = TOP_MENU;
+      tft_update = true;
+      break;
+
+    case MODE_SOUND_SELECT_GROUP:
+    case MODE_SOUND_SELECT_TRACK:
+    case MODE_SOUND_SELECT_PLAY:
+    case MODE_SOUND_PLAY:
+      if (press_type == SHORT_PRESS) {
+        switch (state) {
+          case MODE_SOUND_SELECT_GROUP:
+            state = MODE_SOUND_SELECT_TRACK;
+            break;
+          case MODE_SOUND_SELECT_TRACK:
+            state = MODE_SOUND_SELECT_PLAY;
+            break;
+          case MODE_SOUND_SELECT_PLAY:
+            state = MODE_SOUND_SELECT_GROUP;
+            break;
+        }
+      } else {
+        state = MODE_SCANNER_RESULTS;
+      }
       tft_update = true;
       break;
   }
@@ -813,6 +927,9 @@ void setup() {
   // init bluetooth
   BLEDevice::init("");
 
+  // setup the BLE client
+  pClient = BLEDevice::createClient();
+
   // setup BLE scanner
   pBLEScan = BLEDevice::getScan(); //create new scan
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
@@ -837,7 +954,7 @@ void setup() {
 
   // initialize the droid array
   for(i=0;i<MAX_DROIDS;i++) {
-    droids[i].pAdvertisedDevice = NULL;
+    droids[i].pAdvertisedDevice = nullptr;
   }
 
   // init serial monitor
@@ -858,14 +975,28 @@ void loop() {
       break;
     case MODE_SCANNER_CONNECTING:
       update_display();
-      if( connectToDroid() ) {
+      if( droid_connect() ) {
         state = MODE_SCANNER_CONNECTED;
       } else {
         state = MODE_SCANNER_CONNECT_FAILED;
       }
       tft_update = true;
       break;
+    case MODE_SOUND_PLAY:
+      update_display();
+      Serial.println("Playing sound...");
+      droid_play_track();
+      delay(2000);
+      state = MODE_SOUND_SELECT_PLAY;
+      tft_update = true;
+      break;
     case MODE_SCANNER_CONNECTED:
+      current_group = 0;
+      current_track = 0;
+      delay(2000);
+      state = MODE_SOUND_SELECT_GROUP;
+      tft_update = true;
+      break;
     case MODE_SCANNER_CONNECT_FAILED:
       delay(2000);
       state = MODE_SCANNER_RESULTS;
