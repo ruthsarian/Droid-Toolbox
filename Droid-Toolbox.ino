@@ -1,6 +1,8 @@
-/* Droid Toolbox v0.5 : ruthsarian@gmail.com
+/* Droid Toolbox v0.51 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
+ * 
+ * NOTE: your droid remote MUST BE OFF for this to work!
  * 
  * Features
  *   - Scan for nearby droids
@@ -78,20 +80,22 @@
  *   sleep/wake system to conserve power
  *
  * HISTORY
- *   v0.5 : Added ability to connect to droid from scan results using a long-press of button 1
- *          Droid plays activation sound upon connection
- *          Group and track can be selected and played through the droid.
- *   v0.4 : Added deep sleep/hibernation
- *          Added initial ability to connect to droid with long button 1 press while viewing droid in scan results
+ *   v0.51 : Put BLE notifications back into the code. Any notifications received are displayed in the serial monitor.
+ *           Added note to connecting string so people see the droid remote needs to be off before connecting
+ *   v0.5  : Added ability to connect to droid from scan results using a long-press of button 1
+ *           Droid plays activation sound upon connection
+ *           Group and track can be selected and played through the droid.
+ *   v0.4  : Added deep sleep/hibernation
+ *           Added initial ability to connect to droid with long button 1 press while viewing droid in scan results
  *            Connection is currently a demo; connect, tell droid to play a sound, then disconnect. 
  *            Will improve upon this in the next version.
- *   v0.3 : Long/Short button press detection
- *          Droid report is paged; shows 1 droid at a time
- *          Droid report sorts droids by RSSI value
- *          Added version to splash screen
- *   v0.2 : Added back button from both beacon and scanner.
- *          Location beacon location is randomly selected.
- *   v0.1 : Initial Release
+ *   v0.3  : Long/Short button press detection
+ *           Droid report is paged; shows 1 droid at a time
+ *           Droid report sorts droids by RSSI value
+ *           Added version to splash screen
+ *   v0.2  : Added back button from both beacon and scanner.
+ *           Location beacon location is randomly selected.
+ *   v0.1  : Initial Release
  */
 
 #include <SPI.h>
@@ -101,7 +105,7 @@
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
 
-#define MSG_VERSION       "v0.5"
+#define MSG_VERSION       "v0.51"
 
 #define BUTTON1_PIN       0   // button 1 on the TTGO is GPIO 0 
 #define BUTTON2_PIN       35  // button 2 on the TTGO is GPIO 35
@@ -129,10 +133,11 @@ BLEScan* pBLEScan = nullptr;
 BLEClient* pClient = nullptr;
 BLERemoteService* pRemoteService = nullptr;
 BLERemoteCharacteristic* pRemoteCharacteristicCmd = nullptr;
+BLERemoteCharacteristic* pRemoteCharacteristicNotify = nullptr;
 BLEAdvertising* pAdvertising = nullptr;
 BLEAdvertisementData oScanResponseData = BLEAdvertisementData();
-BLEAdvertisementData* pAdvertisementData = nullptr;   // must be pointer so i can delete class then recreate it every time beacon changes
-                                                   // should i be using smart pointers?
+BLEAdvertisementData* pAdvertisementData = nullptr; // must be pointer so i can delete class then recreate it every time beacon changes
+                                                    // should i be using smart pointers?
 
 typedef struct droid_t {
     uint8_t chipid;
@@ -502,6 +507,11 @@ void update_display() {
       break;
 
     case MODE_SCANNER_CONNECTING:
+      tft.setTextSize(2);
+      tft.setTextColor(TFT_DARKGREY);
+      tft_println_center("TURN OFF YOUR");
+      tft_println_center("DROID REMOTE");
+
       tft.setTextSize(3);
       tft.setTextColor(TFT_ORANGE);
       tft.setCursor(0, (tft.height() / 2) - (tft.fontHeight()/2));
@@ -646,9 +656,47 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
   }
 };
 
+void notifyCallback(
+  BLERemoteCharacteristic* pBLERemoteCharacteristic,
+  uint8_t* pData,
+  size_t length,
+  bool isNotify) {
+    uint8_t i, j; 
+
+    Serial.print("Notify callback for characteristic: ");
+    Serial.print(pBLERemoteCharacteristic->getUUID().toString().c_str());
+    Serial.print(" of data length ");
+    Serial.println(length);
+    Serial.print("data: ");
+
+    // Serial.println((char*)pData);
+    for(i=0;i<length;i++) {
+
+      // print hex value
+      Serial.print(pData[i], HEX);
+      Serial.print(" ");
+
+      // newline
+      if ((i % 16 == 0 && i > 0) || (i == (length - 1))) {
+        if (i == (length - 1)) {
+          j = i - (i % 16);
+        } else {
+          j = i - 16;
+        }
+        Serial.print("    [ ");
+        for(;j<i;j++) {
+          Serial.print((char)pData[j]);
+        }
+        Serial.println(" ]");
+      }
+    }
+    Serial.println();
+}
+
 void droid_disconnect() {
   // disconnect from any previous connection 
   if (pClient != nullptr && pClient->isConnected()) {
+    Serial.println("Disconnecting from droid.");
     pClient->disconnect();
   }
 }
@@ -673,7 +721,7 @@ bool droid_connect() {
   pRemoteService = pClient->getService(serviceUUID);
   if (pRemoteService == nullptr) {
     Serial.println("Failed to find droid service.");
-    pClient->disconnect();
+    droid_disconnect();
     return false;
   }
 
@@ -681,9 +729,19 @@ bool droid_connect() {
   pRemoteCharacteristicCmd = pRemoteService->getCharacteristic(cmdUUID);
   if (pRemoteCharacteristicCmd == nullptr) {
     Serial.println("Failed to find droid chracteristic.");
-    pClient->disconnect();
+    droid_disconnect();
     return false;
   }
+  pRemoteCharacteristicCmd->registerForNotify(notifyCallback);
+
+  // get the characteristic that receives notifications from the droid
+  pRemoteCharacteristicNotify = pRemoteService->getCharacteristic(notifyUUID);
+  if (pRemoteCharacteristicNotify == nullptr) {
+    Serial.println("Failed to find droid chracteristic.");
+    droid_disconnect();
+    return false;
+  }
+  pRemoteCharacteristicNotify->registerForNotify(notifyCallback);
 
   // send command to 'login'; will also disable droid's beacon until disconnect()
   pRemoteCharacteristicCmd->writeValue(login_value, sizeof(login_value));
@@ -865,6 +923,7 @@ void button2(button_press_t press_type) {
             break;
         }
       } else {
+        droid_disconnect();
         state = MODE_SCANNER_RESULTS;
       }
       tft_update = true;
