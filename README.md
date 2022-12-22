@@ -14,8 +14,9 @@ This code started out as a proof-of-concept. There's a lot about it that can be 
 
 ## Images of Working Example
 
-![Image of a TTGO with the Droid Toolbox boot screen.](images/v0.1_01_start.jpg)
+![Image of a TTGO with the Droid Toolbox boot screen.](images/v0.51_01_start.jpg)
 ![Image of a TTGO with the menu screen showing SCANNER band BEACON options.](images/v0.1_02_menu.jpg)
 ![Image of a TTGO with the text 'SCANNING' across the screen.](images/v0.1_03_scanning.jpg)
-![Image of a TTGO showing a list of nearby droids including their bluetooth address, their affiliation, and personality chip.](images/v0.1_04_scan_results.jpg)
+![Image of a TTGO showing a list of nearby droids including their bluetooth address, their affiliation, and personality chip.](images/v0.51_04_scan_results.jpg)
+![Image of a TTGO showing TRACK and GROUP selections and a PLAY button.](images/v0.51_06_track_play.jpg)
 ![Image of a TTGO showing "BEACON ON" on the display.](images/v0.1_05_beacon.jpg)
