@@ -9,6 +9,7 @@ This code was specifically designed for [LILYGO TTGO](http://www.lilygo.cn/prod_
 * Select between emitting a beacon or scanning for nearby droids.
 * When the beacon is activated, a random location beacon is generated.
 * Connect to droid and make is play a specific track from a specific audio group.
+* Auto shut-off.
 
 ## Button Labeling / TTGO Orientation
 ![Image of a TTGO with the Droid Toolbox boot screen.](images/v0.51_01_start.jpg)
@@ -52,6 +53,9 @@ This code was specifically designed for [LILYGO TTGO](http://www.lilygo.cn/prod_
 * A button 1 long press will either move to the next option (TRACK or PLAY) or play the track when PLAY is highlighted. *This behavior will be changed in a future update.*
 * A button 2 short press will step through the options to select a group number, a track number, and play.
 * A button 2 long press will disconnect from the droid and return to the droid scan results.
+
+### Auto Shut-Off
+Droid-toolbox will go to sleep after 5 minutes of inactivity. It will not sleep if a beacon is active. To restart the droid toolbox press the reset button.
 
 ## About Audio Tracks
 Galaxy's Edge droids have [personality chips](https://plandisney.disney.go.com/question/dose-droid-personality-406556/). Droids come with a built-in personality chip, but can be modified by plugging in an extra personality chip which overrides the internal personality chip. The personality chip is a collection of audio clips which play when a droid reacts to location beacons, nearby droids, or button presses on the droid's remote control. The audio clips are divided into 12 separate groups. The first 7 groups represent 7 areas within Galaxy's Edge and are what plays when a droid reacts to a beacon. Group 8 through 12 contain special audio clips used with droid accessories (for R-units) and special circumstances, such as when a droid is first activated inside Droid Depot. 
