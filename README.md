@@ -62,7 +62,7 @@ Galaxy's Edge droids have [personality chips](https://plandisney.disney.go.com/q
 
 Droid Toolbox allows you to select between the 12 groups and select an audio track within that group. The number of audio clips for a given group can vary between personality chips. While we know how many clips there are for stock personality chips, custom personality chips could have as many audio clips as you want. As such you'll be able to select up to audio track 99, even though the number of tracks typically goesn't go beyond 6. If you try to play an audio track number that doesn't exist the droid will simply do nothing.
 
-### Audio Groups and their Uses
+### Audio Groups and Their Uses
 |Group|Purpose|
 |---|---|
 |1|Location: Market Area|
