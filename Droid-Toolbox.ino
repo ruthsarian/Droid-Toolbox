@@ -59,7 +59,7 @@
  *   tft.width(), tft.height()
  *   tft.textWidth(), tft.fontHeight()
  *   tft.print() vs tft.println()
-  *   keep text size to no smaller than 2
+ *   keep text size to no smaller than 2
  *
  * TODO
  *   beacon:
@@ -72,6 +72,13 @@
  *         set location
  *         set minimum reaction interval 
  *   scanner:
+ *     search for specific droid/location
+ *        constant scan; alert when encountering the specified beacon
+ *        maybe proximity alert too? getting closer or farther away?
+ *     ability to scan for location beacons
+ *        based on RSSI, identify current 'zone'
+ *        identify nearby zones 
+ *        maybe a constant-scan mode that alerts when the rare zones appear (4, 5)
  *     ability to connect to a single droid and send 'raw' commands
  *        play specific track from specific audio group
  *        control LEDs (?)
