@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.51 : ruthsarian@gmail.com
+/* Droid Toolbox v0.52 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * 
@@ -282,7 +282,7 @@ void display_scanner_results() {
         tft_println_center("Yellow");
         break;
       case 11:
-        tft_println_center("CH1-10P");
+        tft_println_center("C1-10P");
         break;
       case 13:
         tft_println_center("Blue");
