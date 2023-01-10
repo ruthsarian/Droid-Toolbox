@@ -87,6 +87,7 @@
  *   sleep/wake system to conserve power
  *
  * HISTORY
+ *   v0.52 : Fixed typo "CH1-10P" => "C1-10P"
  *   v0.51 : Put BLE notifications back into the code. Any notifications received are displayed in the serial monitor.
  *           Added note to connecting string so people see the droid remote needs to be off before connecting
  *   v0.5  : Added ability to connect to droid from scan results using a long-press of button 1
@@ -112,7 +113,7 @@
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
 
-#define MSG_VERSION       "v0.51"
+#define MSG_VERSION       "v0.52"
 
 #define BUTTON1_PIN       0   // button 1 on the TTGO is GPIO 0 
 #define BUTTON2_PIN       35  // button 2 on the TTGO is GPIO 35
