@@ -1,7 +1,6 @@
-/* Droid Toolbox v0.52 : ruthsarian@gmail.com
+/* Droid Toolbox v0.53 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
- * 
  * NOTE: your droid remote MUST BE OFF for this to work!
  * 
  * Features
@@ -9,30 +8,38 @@
  *   - Generate location and droid beacons
  *   - Control audio produced by droids
  * 
- * Designed to be used with a TTGO / LILYGO ESP32 Module with LCD display
- *   see: https://www.amazon.com/dp/B099MPFJ9M or https://www.amazon.com/dp/B098PYJ7ZL
- *
+ * Designed to be used with a LilyGO TTGO T-Display or LilyGO T-Display-S3 which are ESP32-based modules with an LCD display, although
+ * it should work with any ESP32 module and some small code changes.
+ *   see: https://www.amazon.com/dp/B099MPFJ9M (TTGO T-Display)
+ *        https://www.amazon.com/dp/B0BF542H39 (T-Display-S3)
+ * 
  * Required Boards
  *  Arduino ESP32 core: https://github.com/espressif/arduino-esp32
  *    1. add https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json to the additional board manager URLs in the preferences window
  *    2. go to boards manager
  *    3. search for and install esp32
+ *    4. when compiling, select either the ESP32 Dev Module (for T-Display) or ESP32S3 Dev Module (for T-Display-32)
  * 
- * Required Libraries
- *  Arduino TFT_eSPI library: https://github.com/Bodmer/TFT_eSPI
+ * Requires the TFT_eSPI Library
+ *  see: https://github.com/Bodmer/TFT_eSPI
  *  
- *    !! NOTICE !! 
- *    
+ *  NOTE 1: 
+ *    the T-Display-S3, as of writing, requires a modified copy of TFT_eSPI which you can get
+ *    at https://github.com/Xinyuan-LilyGO/T-Display-S3
+ *  
+ *  NOTE 2: 
  *    After installing or updating the TFT_eSPI library you MUST edit User_Setup_Select.h as follows 
  *      1. comment out the line "#include <User_Setup.h>" (line 22-ish)
- *      2. uncomment the line "#include <User_Setups/Setup25_TTGO_T_Display.h>" (line 53-ish)
+ *      2. uncomment the line "#include <User_Setups/Setup25_TTGO_T_Display.h>" (line 61-ish) for T-Display
+ *         or "#include <User_Setups/Setup206_LilyGo_T_Display_S3.h>" for the T-Display-32
  *      
  *    Possible path for Windows users: %USERPROFILE%\Documents\Arduino\libraries\TFT_eSPI\User_Setup_Select.h
  *
  * A BLE library is included in the Arduino ESP32 core. If you have ArduinoBLE already installed you will need
- * to temporarily uninstall it in order for this code to compile correctly.
+ * to uninstall it in order for this code to compile correctly. To uninstall a library locate your arduino 
+ * libraries folder and delete the ArduinoBLE folder.
  *
- * Arduino IDE Board Configuration (defaults)
+ * TTGO T-Display Board Configuration (defaults)
  *  Board: ESP32 Dev Module
  *  Upload Speed: 921600
  *  CPU Freq: 240MHz (WiFI/BT)
@@ -43,10 +50,21 @@
  *  Core Debug Level: None
  *  PSRAM: Disabled
  * 
+ * T-Display-S3 Board Configuration (defaults)
+ *  Board: ESP32S3 Dev Module
+ *  Upload Speed: 921600
+ *  CPU Freq: 240MHz (WiFI/BT)
+ *  Flash Freq: 80MHz
+ *  Flash Mode: QIO
+ *  Flash Size: 16MB (128Mb)
+ *  Partition Scheme: Huge App (3MB No OTA/1MB SPIFFS)
+ *  Core Debug Level: None
+ *  PSRAM: OPI PSRAM 
+ *   
  * References
  *   Arduino IDE setup: https://www.youtube.com/watch?v=b8254--ibmM
- *   TTGO pinout: https://i.redd.it/1usgojazvq561.jpg
- *   Programming the bin w/o Arduino IDE: https://www.aranacorp.com/en/generating-and-uploading-bin-files-for-esp32/
+ *   TTGO T-Display Github Repository: https://github.com/Xinyuan-LilyGO/TTGO-T-Display
+ *   T-Display-S3 Github Repository: https://github.com/Xinyuan-LilyGO/T-Display-S3
  *   
  *   Misc:
  *     https://github.com/Bodmer/TFT_eSPI/blob/master/TFT_eSPI.h
@@ -87,6 +105,9 @@
  *   sleep/wake system to conserve power
  *
  * HISTORY
+ *   v0.53 : Added support for T-Display-S3 devices
+ *           T-Display-S3 currently requires a modified version of TFT_eSPI which you can get from the T-Display-S3
+ *           github repository here: https://github.com/Xinyuan-LilyGO/T-Display-S3 under the lib directory
  *   v0.52 : Fixed typo "CH1-10P" => "C1-10P"
  *   v0.51 : Put BLE notifications back into the code. Any notifications received are displayed in the serial monitor.
  *           Added note to connecting string so people see the droid remote needs to be off before connecting
@@ -106,17 +127,25 @@
  *   v0.1  : Initial Release
  */
 
-#include <SPI.h>
 #include <TFT_eSPI.h>
+#include <SPI.h>
 #include <BLEDevice.h>
 #include <BLEUtils.h>
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
 
-#define MSG_VERSION       "v0.52"
+#define MSG_VERSION       "v0.53"
+
+#ifdef ARDUINO_ESP32S3_DEV    // this is assuming you're compiling for T-Display-S3 using the "ESP32S3 Dev Module" board. 
+  #define TDISPLAYS3
+#endif
 
 #define BUTTON1_PIN       0   // button 1 on the TTGO is GPIO 0 
-#define BUTTON2_PIN       35  // button 2 on the TTGO is GPIO 35
+#ifdef TDISPLAYS3             // button 2 on the TTGO is GPIO 35; GPIO14 for T-Display-S3
+  #define BUTTON2_PIN     14
+#else
+  #define BUTTON2_PIN     35
+#endif
 #define LAZY_DEBOUNCE     10  // time to wait after a button press before considering it a good press
 #define SHORT_PRESS_TIME  500 // maximum time, in milliseconds, that a button can be held before release and be considered a SHORT press
 
@@ -981,6 +1010,12 @@ void button_handler() {
 
 void setup() {
   uint8_t i;
+
+  // T-Display-S3 needs this in order to run off battery
+  #ifdef TDISPLAYS3
+      pinMode(15,OUTPUT);
+      digitalWrite(15, HIGH);
+  #endif
 
   // setup display
   tft.init();
