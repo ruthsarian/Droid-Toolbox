@@ -651,9 +651,9 @@ void display_scanner_results() {
 }
 
 void display_menu(menu_item_t *items, uint8_t num_items) {
-  uint16_t y = 0;
-  uint16_t w = 0;
-  uint8_t row_padding, rows, row_height, row_width, i;
+  int16_t y = 0;
+  int16_t w = 0;
+  uint8_t row_padding, rows, row_height, row_width, i, offset;
 
   // reset screen
   tft.fillScreen(TFT_BLACK);
@@ -672,35 +672,48 @@ void display_menu(menu_item_t *items, uint8_t num_items) {
   }
   row_width += (row_padding*4);
 
-  // the entire menu will fit on 1 screen
-  if (num_items <= rows) {
-
-      // where do we start drawing the menu?
-      y = (tft.height()/2) - ((num_items * row_height)/2);
-
-      // draw the menu
-      for (i=0;i<num_items;i++) {
-        if (state == items[i].state) {
-          tft.setTextColor(TFT_GREEN);
-          tft.drawRect(
-              (tft.width()/2) - (row_width/2),
-              y, 
-              row_width, 
-              row_height, 
-              TFT_CYAN
-           );
-        } else {
-          tft.setTextColor(TFT_DARKGREEN);
-        }
-        tft.setCursor((tft.width() / 2) - (tft.textWidth(items[i].text) / 2), y + row_padding + 1);
-        tft.print(items[i].text);
-
-        y += row_height;
+  // calculate an offset such that when it comes time
+  // to draw the menu, the selected item appears in the middle
+  // of the screen
+  //
+  // only do that in instances where the entire menu will NOT fit on the screen
+  if (num_items > rows) {
+    for(offset=0;offset<num_items;offset++) {
+      if (state == items[offset].state) {
+        break;
       }
-
-  // the menu must scroll
+    }
+    offset -= ((num_items-1)/2);
+    offset %= num_items;
   } else {
-    
+    offset = 0;
+  }
+
+  // where do we start drawing the menu?
+  y = (tft.height()/2) - ((num_items * row_height)/2);
+
+  if (num_items > rows && rows%2 == 0) {
+    y += row_height/2;
+  }
+
+  // draw the menu
+  for (i=offset;i<(num_items+offset);i++) {
+    if (state == items[i%num_items].state) {
+      tft.setTextColor(TFT_GREEN);
+      tft.drawRect(
+          (tft.width()/2) - (row_width/2),
+          y, 
+          row_width, 
+          row_height, 
+          TFT_CYAN
+       );
+    } else {
+      tft.setTextColor(TFT_DARKGREEN);
+    }
+    tft.setCursor((tft.width() / 2) - (tft.textWidth(items[i%num_items].text) / 2), y + row_padding + 1);
+    tft.print(items[i%num_items].text);
+
+    y += row_height;
   }
 }
 
@@ -852,6 +865,18 @@ void update_display() {
       tft_println_center("FAILED");
       break;
 
+    case MODE_SOUND_SELECTED:
+    case MODE_VOLUME_SELECTED:
+      tft.setTextSize(4);
+      display_menu(connected_menu, sizeof(connected_menu)/sizeof(menu_item_t));
+      break;
+
+    case MODE_SCANNER_SELECTED:
+    case MODE_BEACON_SELECTED:
+      tft.setTextSize(4);
+      display_menu(top_menu, sizeof(top_menu)/sizeof(menu_item_t));
+      break;
+
     case SPLASH:
       display_splash();
       break;
@@ -866,15 +891,14 @@ void button1(button_press_t press_type) {
   static uint32_t last_time_btn1 = 0;
   static uint32_t last_time_btn1_down = 0;
 
-  if (press_type == LONG_PRESS) {
-    Serial.println("BUTTON 1 PRESS: LONG");
-  } else {
-    Serial.println("BUTTON 1 PRESS: SHORT");
-  }
-
   switch(state) {
     case SPLASH:
       state = MODE_SCANNER_SELECTED;
+      tft_update = true;
+      break;
+
+    case MODE_SCANNER_SELECTED:
+      state = MODE_SCANNER_SCANNING;
       tft_update = true;
       break;
 
@@ -890,6 +914,18 @@ void button1(button_press_t press_type) {
       }
       tft_update = true;
       break;
+
+    case MODE_SOUND_SELECTED:
+      current_group = 0;
+      current_track = 0;
+      state = MODE_SOUND_GROUP;
+      tft_update = true;
+      break;
+
+//    case MODE_VOLUME_SELECTED:
+//      state = MODE_VOLUME_UP;
+//      tft_update = true;
+//      break;
 
     case MODE_SOUND_GROUP:
       if (press_type == SHORT_PRESS) {
@@ -916,7 +952,6 @@ void button1(button_press_t press_type) {
       tft_update = true;
       break;
 
-    case MODE_BEACON_SELECTED:
     case MODE_BEACON_OFF:
       init_advertisement_data();
       set_payload_location_beacon(esp_random());
@@ -925,6 +960,7 @@ void button1(button_press_t press_type) {
       tft_update = true;
       break;
 
+    case MODE_BEACON_SELECTED:
     case MODE_BEACON_ON:
       pAdvertising->stop();
       state = MODE_BEACON_OFF;
@@ -939,16 +975,33 @@ void button2(button_press_t press_type) {
   static uint32_t last_time_btn2 = 0;
   static uint32_t last_time_btn2_down = 0;
 
-  if (press_type == LONG_PRESS) {
-    Serial.println("BUTTON 2 PRESS: LONG");
-  } else {
-    Serial.println("BUTTON 2 PRESS: SHORT");
-  }
-
   // do button 2 stuff
   switch(state) {
     case SPLASH:
       state = MODE_SCANNER_SELECTED;
+      tft_update = true;
+      break;
+
+    case MODE_SOUND_SELECTED:
+    case MODE_VOLUME_SELECTED:
+      if (press_type == SHORT_PRESS) {
+        switch (state) {
+          case MODE_SOUND_SELECTED:
+            state = MODE_VOLUME_SELECTED;
+            break;
+          default:
+            state = MODE_SOUND_SELECTED;
+            break;
+        }
+      } else {
+        droid_disconnect();
+        state = MODE_SCANNER_RESULTS;
+      }
+      tft_update = true;
+      break;
+
+    case MODE_SCANNER_SELECTED:
+      state = MODE_BEACON_SELECTED;
       tft_update = true;
       break;
 
@@ -978,7 +1031,7 @@ void button2(button_press_t press_type) {
         }
       } else {
         droid_disconnect();
-        state = MODE_SCANNER_RESULTS;
+        state = MODE_SOUND_SELECTED;
       }
       tft_update = true;
       break;
@@ -1030,8 +1083,8 @@ void setup() {
 
   // T-Display-S3 needs this in order to run off battery
   #ifdef TDISPLAYS3
-      pinMode(15,OUTPUT);
-      digitalWrite(15, HIGH);
+    pinMode(15,OUTPUT);
+    digitalWrite(15, HIGH);
   #endif
 
   // setup display
@@ -1081,58 +1134,14 @@ void setup() {
   Serial.println("Ready!");
 }
 
-void demo() {
-
-  uint8_t i, menu_len;
-
-  // reset screen
-  tft.fillScreen(TFT_BLACK);
-  tft.setCursor(0, 0);
-
-  display_splash();
-  delay(5000);
-
-  Serial.print("LEN1: ");
-  Serial.println(sizeof( top_menu ));
-
-  Serial.print("LEN2: ");
-  Serial.println(sizeof( menu_item_t ));
-
-
-  tft.setTextSize(4);
-  for(i=0;i<menu_len*3;i++) {
-    menu_len = sizeof(top_menu)/sizeof(menu_item_t);
-    state = top_menu[i%menu_len].state;
-    display_menu(top_menu, menu_len);
-    delay(2000);
-  }
-  for(i=0;i<menu_len*3;i++) {
-    menu_len = sizeof(connected_menu)/sizeof(menu_item_t);
-    state = connected_menu[i%menu_len].state;
-    display_menu(connected_menu, menu_len);
-    delay(2000);
-  }
-  delay(5000);
-
-
-
-}
-
 void loop() {
   
-  demo();
-  return;
-
-
-
-
-
-
   button_handler();
 
   switch (state) {
 
     case MODE_SCANNER_SCANNING:
+      update_display();
       ble_scan();
       current_droid = 0;
       state = MODE_SCANNER_RESULTS;
@@ -1159,10 +1168,8 @@ void loop() {
       break;
 
     case MODE_SCANNER_CONNECTED:
-      current_group = 0;
-      current_track = 0;
       delay(2000);
-      state = MODE_SOUND_GROUP;
+      state = MODE_SOUND_SELECTED;
       tft_update = true;
       break;
 
