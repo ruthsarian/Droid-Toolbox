@@ -54,12 +54,14 @@
  *  Board: ESP32S3 Dev Module
  *  Upload Speed: 921600
  *  CPU Freq: 240MHz (WiFI/BT)
- *  Flash Freq: 80MHz
- *  Flash Mode: QIO
+ *  Flash Mode: QIO 80MHz
  *  Flash Size: 16MB (128Mb)
  *  Partition Scheme: Huge App (3MB No OTA/1MB SPIFFS)
  *  Core Debug Level: None
  *  PSRAM: OPI PSRAM 
+ *  USB CDC On Boot: Enabled
+ *  JTAG Adapter: Integrated USB JTAG
+ *  USB Mode: Hardware CDC and JTAG
  *   
  * References
  *   Arduino IDE setup: https://www.youtube.com/watch?v=b8254--ibmM
@@ -73,12 +75,6 @@
  *     https://programmer.ink/think/color-setting-and-text-display-esp32-learning-tour-arduino-version.html.
  *     https://github.com/nkolban/esp32-snippets/blob/fe3d318acddf87c6918944f24e8b899d63c816dd/cpp_utils/BLEAdvertisedDevice.h
  *   
- * Notes
- *   tft.width(), tft.height()
- *   tft.textWidth(), tft.fontHeight()
- *   tft.print() vs tft.println()
- *   keep text size to no smaller than 2
- *
  * TODO
  *   beacon:
  *     allow for beacon customization
@@ -102,10 +98,15 @@
  *        control LEDs (?)
  *        control motors (is this a GOOD idea? probably not...)
  *        other ??
- *   sleep/wake system to conserve power
+ *   internationalization/localization; 
+ *     put all static strings into a location (an array, a bunch of #defines) that allows for easier
+ *     translation to other languages without having to sift through all the code
  *
  * HISTORY
- *   v0.54 : 
+ *   v0.54 : Added volume control
+ *           Started work on creating a generic menu system
+ *           Centered the play track screen 
+ *           Current group and track no longer reset to 1-1 when exiting the play track screen
  *   v0.53 : Added support for T-Display-S3 devices
  *           T-Display-S3 currently requires a modified version of TFT_eSPI which you can get from the T-Display-S3
  *           github repository here: https://github.com/Xinyuan-LilyGO/T-Display-S3 under the lib directory
@@ -135,37 +136,37 @@
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
 
-#define MSG_VERSION       "v0.54.ALPHA"
+#define MSG_VERSION "v0.54"
 
-#ifdef ARDUINO_ESP32S3_DEV    // this is assuming you're compiling for T-Display-S3 using the "ESP32S3 Dev Module" board. 
-  #define TDISPLAYS3
+#ifdef ARDUINO_ESP32S3_DEV  // this is assuming you're compiling for T-Display-S3 using the "ESP32S3 Dev Module" board.
+#define TDISPLAYS3
 #endif
 
-#define BUTTON1_PIN       0   // button 1 on the TTGO is GPIO 0 
-#ifdef TDISPLAYS3             // button 2 on the TTGO is GPIO 35; GPIO14 for T-Display-S3
-  #define BUTTON2_PIN     14
+#define BUTTON1_PIN 0  // button 1 on the TTGO is GPIO 0
+#ifdef TDISPLAYS3      // button 2 on the TTGO is GPIO 35; GPIO14 for T-Display-S3
+#define BUTTON2_PIN 14
 #else
-  #define BUTTON2_PIN     35
+#define BUTTON2_PIN 35
 #endif
-#define LAZY_DEBOUNCE     10  // time to wait after a button press before considering it a good press
-#define SHORT_PRESS_TIME  500 // maximum time, in milliseconds, that a button can be held before release and be considered a SHORT press
+#define LAZY_DEBOUNCE 10      // time to wait after a button press before considering it a good press
+#define SHORT_PRESS_TIME 500  // maximum time, in milliseconds, that a button can be held before release and be considered a SHORT press
 
-#define MAX_DROIDS        20  // maximum number of droids to report on
-#define BLE_SCAN_TIME     5   // how many seconds to scan
+#define MAX_DROIDS 20    // maximum number of droids to report on
+#define BLE_SCAN_TIME 5  // how many seconds to scan
 
-#define PAYLOAD_SIZE      8   // size, in bytes, of a beacon payload
-#define MSG_LEN_MAX       32
-#define DROID_ADDR_LEN    20
+#define PAYLOAD_SIZE 8  // size, in bytes, of a beacon payload
+#define MSG_LEN_MAX 32
+#define DROID_ADDR_LEN 20
 
-#define SLEEP_AFTER       5 * 60 * 1000   // how many milliseconds of inactivity before going to sleep/hibernation
-#define WAKEUP_BUTTON     GPIO_NUM_0      // wake up when button 1 is pressed _ONLY_IF_ it's been enabled in setup(); otherwise the reset button will wake up the TTGO
-#define WAKEUP_LEVEL      LOW             // wake up from sleep when the button is pressed (LOW)
+#define SLEEP_AFTER 5 * 60 * 1000  // how many milliseconds of inactivity before going to sleep/hibernation
+#define WAKEUP_BUTTON GPIO_NUM_0   // wake up when button 1 is pressed _ONLY_IF_ it's been enabled in setup(); otherwise the reset button will wake up the TTGO
+#define WAKEUP_LEVEL LOW           // wake up from sleep when the button is pressed (LOW)
 
-uint32_t  last_activity;
+uint32_t last_activity;
 
 const BLEUUID serviceUUID("09b600a0-3e42-41fc-b474-e9c0c8f0c801");
-const BLEUUID     cmdUUID("09b600b1-3e42-41fc-b474-e9c0c8f0c801");
-const BLEUUID  notifyUUID("09b600b0-3e42-41fc-b474-e9c0c8f0c801");    // not used, but keeping it for future reference
+const BLEUUID cmdUUID("09b600b1-3e42-41fc-b474-e9c0c8f0c801");
+const BLEUUID notifyUUID("09b600b0-3e42-41fc-b474-e9c0c8f0c801");  // not used, but keeping it for future reference
 
 BLEScan* pBLEScan = nullptr;
 BLEClient* pClient = nullptr;
@@ -174,13 +175,13 @@ BLERemoteCharacteristic* pRemoteCharacteristicCmd = nullptr;
 BLERemoteCharacteristic* pRemoteCharacteristicNotify = nullptr;
 BLEAdvertising* pAdvertising = nullptr;
 BLEAdvertisementData oScanResponseData = BLEAdvertisementData();
-BLEAdvertisementData* pAdvertisementData = nullptr; // must be pointer so i can delete class then recreate it every time beacon changes
-                                                    // should i be using smart pointers?
+BLEAdvertisementData* pAdvertisementData = nullptr;  // must be pointer so i can delete class then recreate it every time beacon changes
+                                                     // should i be using smart pointers?
 
 typedef struct droid {
-    uint8_t chipid;
-    uint8_t affid;
-    BLEAdvertisedDevice* pAdvertisedDevice;
+  uint8_t chipid;
+  uint8_t affid;
+  BLEAdvertisedDevice* pAdvertisedDevice;
 } droid_t;
 
 droid_t droids[MAX_DROIDS];
@@ -190,23 +191,23 @@ uint8_t current_group = 0;
 uint8_t current_track = 0;
 
 const uint8_t SWGE_LOCATION_BEACON_PAYLOAD[] = {
-  0x83, 0x01, // manufacturer's id: 0x0183
-  0x0A,       // type of beacon (location beacon)
-  0x04,       // length of beacon data
-  0x01,       // location; also corresponds to the audio group the droid will select a sound from
-  0x02,       // minimum interval between droid reactions to the beacon; this value is multiplied by 5 to determine the interval in seconds. droids have a minimum reaction time of 60 seconds
-  0xA6,       // expected RSSI, beacon is ignored if weaker than value specified
-  0x01,       // ? 0 or 1 otherwise droid will ignore the beacon
+  0x83, 0x01,  // manufacturer's id: 0x0183
+  0x0A,        // type of beacon (location beacon)
+  0x04,        // length of beacon data
+  0x01,        // location; also corresponds to the audio group the droid will select a sound from
+  0x02,        // minimum interval between droid reactions to the beacon; this value is multiplied by 5 to determine the interval in seconds. droids have a minimum reaction time of 60 seconds
+  0xA6,        // expected RSSI, beacon is ignored if weaker than value specified
+  0x01,        // ? 0 or 1 otherwise droid will ignore the beacon
 };
 
 const uint8_t SWGE_DROID_BEACON_PAYLOAD[] = {
-  0x83, 0x01, // manufacturer's id: 0x0183
-  0x03,       // type of beacon (droid beacon)
-  0x04,       // length of beacon data
-  0x44,       // ??
-  0x81,       // 0x01 + ( 0x80 if droid is paired with a remote)
-  0x82,       // a combination of personality chip and affiliation IDs
-  0x01,       // personality chip ID
+  0x83, 0x01,  // manufacturer's id: 0x0183
+  0x03,        // type of beacon (droid beacon)
+  0x04,        // length of beacon data
+  0x44,        // ??
+  0x81,        // 0x01 + ( 0x80 if droid is paired with a remote)
+  0x82,        // a combination of personality chip and affiliation IDs
+  0x01,        // personality chip ID
 };
 
 uint8_t payload[PAYLOAD_SIZE];
@@ -279,20 +280,21 @@ typedef struct menu_item {
 
 menu_item_t top_menu[] = {
   { MODE_SCANNER_SELECTED, "SCANNER" },
-  { MODE_BEACON_SELECTED,  "BEACON"  }
+  { MODE_BEACON_SELECTED, "BEACON" }
 };
 
 menu_item_t connected_menu[] = {
-  { MODE_SOUND_SELECTED,  "SOUNDS" },
+  { MODE_SOUND_SELECTED, "SOUNDS" },
   { MODE_VOLUME_SELECTED, "VOLUME" }
 };
 
 system_state_t state = SPLASH;
 
-TFT_eSPI tft = TFT_eSPI();    // display interface
-bool tft_update = true;       // flag to inidcate display needs to be updated
+TFT_eSPI tft = TFT_eSPI();  // display interface
+bool tft_update = true;     // flag to inidcate display needs to be updated
 
 uint8_t selected_item = 0;
+ int8_t droid_volume = 100; // there is no way to 'read' the current volume setting, so we'll keep track with a variable
 
 const char msg_title[] = "Droid Toolbox";
 const char msg_email[] = "ruthsarian@gmail.com";
@@ -356,20 +358,20 @@ void set_payload_location_beacon(uint8_t location) {
 }
 
 // BLE Advertising Callback
-class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
+class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
   void onResult(BLEAdvertisedDevice advertisedDevice) {
     uint8_t *rawdata, rawdata_len, i, pos;
     uint16_t mfid;
-  
+
     // do not add this object if it doesn't have the name DROID or if it does not have manufacturer data
     if (advertisedDevice.getName() != "DROID" || !advertisedDevice.haveManufacturerData()) {
       return;
     }
-  
+
     // exract manufacturer's id from device's manufacturer data
     rawdata = (uint8_t*)advertisedDevice.getManufacturerData().data();
     rawdata_len = advertisedDevice.getManufacturerData().length();
-    mfid = rawdata[0] + (rawdata[1]<<8);
+    mfid = rawdata[0] + (rawdata[1] << 8);
 
     // do not add this device if it does not have a manufacturer's id of 0x0183 (Disney)
     if (rawdata_len != 8 || mfid != 0x0183) {
@@ -382,7 +384,7 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     if (droid_count > 0) {
 
       // find where to insert droid into list; higher RSSI come first in list
-      for (pos=0;pos<droid_count;pos++) {
+      for (pos = 0; pos < droid_count; pos++) {
         if (droids[pos].pAdvertisedDevice->getRSSI() < advertisedDevice.getRSSI()) {
           break;
         }
@@ -394,25 +396,25 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
       }
 
       // push droids with a lower RSSI down the list
-      for (i = droid_count;i>pos;i--) {
+      for (i = droid_count; i > pos; i--) {
         if (i < MAX_DROIDS) {
-          droids[i] = droids[i-1];                  // move droid to new position in array
-          droids[i-1].pAdvertisedDevice = nullptr;     // clear the previous position in prep for the new droid
+          droids[i] = droids[i - 1];                  // move droid to new position in array
+          droids[i - 1].pAdvertisedDevice = nullptr;  // clear the previous position in prep for the new droid
         } else {
-          delete droids[i-1].pAdvertisedDevice;
+          delete droids[i - 1].pAdvertisedDevice;
         }
       }
     }
 
     // store found droid's information
-    droids[pos].chipid = rawdata[rawdata_len-1];
-    droids[pos].affid = (rawdata[rawdata_len-2] - 0x80) / 2;
+    droids[pos].chipid = rawdata[rawdata_len - 1];
+    droids[pos].affid = (rawdata[rawdata_len - 2] - 0x80) / 2;
 
     // need to store a pointer to an AdvertisedDevice object for this device because
     // it's the only thing i can use to connect to the droid successfully
 
     // first check to make sure there isn't already a pointer and if there is delete it
-    if ( droids[pos].pAdvertisedDevice != nullptr ) {
+    if (droids[pos].pAdvertisedDevice != nullptr) {
       Serial.println("delete old AdvertsidedDevice object");
       delete droids[pos].pAdvertisedDevice;
     }
@@ -437,40 +439,40 @@ void notifyCallback(
   uint8_t* pData,
   size_t length,
   bool isNotify) {
-    uint8_t i, j; 
+  uint8_t i, j;
 
-    Serial.print("Notify callback for characteristic: ");
-    Serial.print(pBLERemoteCharacteristic->getUUID().toString().c_str());
-    Serial.print(" of data length ");
-    Serial.println(length);
-    Serial.print("data: ");
+  Serial.print("Notify callback for characteristic: ");
+  Serial.print(pBLERemoteCharacteristic->getUUID().toString().c_str());
+  Serial.print(" of data length ");
+  Serial.println(length);
+  Serial.print("data: ");
 
-    // Serial.println((char*)pData);
-    for(i=0;i<length;i++) {
+  // Serial.println((char*)pData);
+  for (i = 0; i < length; i++) {
 
-      // print hex value
-      Serial.print(pData[i], HEX);
-      Serial.print(" ");
+    // print hex value
+    Serial.print(pData[i], HEX);
+    Serial.print(" ");
 
-      // newline
-      if ((i % 16 == 0 && i > 0) || (i == (length - 1))) {
-        if (i == (length - 1)) {
-          j = i - (i % 16);
-        } else {
-          j = i - 16;
-        }
-        Serial.print("    [ ");
-        for(;j<i;j++) {
-          Serial.print((char)pData[j]);
-        }
-        Serial.println(" ]");
+    // newline
+    if ((i % 16 == 0 && i > 0) || (i == (length - 1))) {
+      if (i == (length - 1)) {
+        j = i - (i % 16);
+      } else {
+        j = i - 16;
       }
+      Serial.print("    [ ");
+      for (; j < i; j++) {
+        Serial.print((char)pData[j]);
+      }
+      Serial.println(" ]");
     }
-    Serial.println();
+  }
+  Serial.println();
 }
 
 void droid_disconnect() {
-  // disconnect from any previous connection 
+  // disconnect from any previous connection
   if (pClient != nullptr && pClient->isConnected()) {
     Serial.println("Disconnecting from droid.");
     pClient->disconnect();
@@ -478,9 +480,9 @@ void droid_disconnect() {
 }
 
 bool droid_connect() {
-  uint8_t login_value[] = {0x22, 0x20, 0x01};
-  uint8_t cmd_a[] = {0x27, 0x42, 0x0f, 0x44, 0x44, 0x00, 0x1f, 0x07};
-  uint8_t cmd_b[] = {0x27, 0x42, 0x0f, 0x44, 0x44, 0x00, 0x18, 0x00};
+  uint8_t login_value[] = { 0x22, 0x20, 0x01 };
+  uint8_t cmd_a[] = { 0x27, 0x42, 0x0f, 0x44, 0x44, 0x00, 0x1f, 0x07 };
+  uint8_t cmd_b[] = { 0x27, 0x42, 0x0f, 0x44, 0x44, 0x00, 0x18, 0x00 };
 
   // end any current connection
   droid_disconnect();
@@ -488,7 +490,7 @@ bool droid_connect() {
   // create a new connection
   Serial.print("Connecting to ");
   Serial.println(droids[current_droid].pAdvertisedDevice->getAddress().toString().c_str());
-  if (!pClient->connect( droids[current_droid].pAdvertisedDevice )) {
+  if (!pClient->connect(droids[current_droid].pAdvertisedDevice)) {
     Serial.println("Connection failed.");
     return false;
   }
@@ -535,16 +537,47 @@ bool droid_connect() {
 }
 
 void droid_play_track() {
-  uint8_t cmd_set_group[]  = {0x27, 0x42, 0x0f, 0x44, 0x44, 0x00, 0x1f, 0x07};
-  uint8_t cmd_play_track[] = {0x27, 0x42, 0x0f, 0x44, 0x44, 0x00, 0x18, 0x00};
+  uint8_t cmd_set_group[] = { 0x27, 0x42, 0x0f, 0x44, 0x44, 0x00, 0x1f, 0x07 };
+  uint8_t cmd_play_track[] = { 0x27, 0x42, 0x0f, 0x44, 0x44, 0x00, 0x18, 0x00 };
 
   if (pClient->isConnected() && pRemoteCharacteristicCmd != nullptr) {
-    cmd_set_group[7]  = current_group % 12;
+    cmd_set_group[7] = current_group % 12;
     cmd_play_track[7] = current_track & 0xFF;
+
+    Serial.print("Playing track ");
+    Serial.print(current_group);
+    Serial.print("-");
+    Serial.println(current_track);
 
     pRemoteCharacteristicCmd->writeValue(cmd_set_group, sizeof(cmd_set_group));
     delay(100);
     pRemoteCharacteristicCmd->writeValue(cmd_play_track, sizeof(cmd_play_track));
+    delay(100);
+  }
+}
+
+void droid_play_next_track() {
+  uint8_t cmd_play_next_track[] = { 0x26, 0x42, 0x0f, 0x43, 0x44, 0x00, 0x1c };
+
+  if (pClient->isConnected() && pRemoteCharacteristicCmd != nullptr) {
+    pRemoteCharacteristicCmd->writeValue(cmd_play_next_track, sizeof(cmd_play_next_track));
+    delay(100);
+  }
+}
+
+void droid_set_volume() {
+  uint8_t cmd_set_volume[] = { 0x27, 0x42, 0x0f, 0x44, 0x44, 0x00, 0x0e, 0x1f };
+
+  if (pClient->isConnected() && pRemoteCharacteristicCmd != nullptr) {
+    cmd_set_volume[7] = (uint8_t)((float)droid_volume / 3.2); // where's the 3.2 come from? 
+                                                              // assumed good values for volume are 0x00 - 0x1f (31).
+                                                              // 100 / 31 = 3.2 (ish)
+                                                              // the 0 to 100 volume scale is just cosmetic
+
+    Serial.print("New volume: 0x");
+    Serial.println(cmd_set_volume[7], HEX);
+
+    pRemoteCharacteristicCmd->writeValue(cmd_set_volume, sizeof(cmd_set_volume));
     delay(100);
   }
 }
@@ -568,89 +601,12 @@ void ble_scan() {
   pBLEScan->clearResults();
 }
 
-void tft_println_center(const char *msg) {
+void tft_println_center(const char* msg) {
   tft.setCursor((tft.width() / 2) - (tft.textWidth(msg) / 2), tft.getCursorY());
   tft.println(msg);
 }
 
-void display_scanner_results() {
-  char msg[MSG_LEN_MAX];
-  uint16_t y = 0;
-  uint8_t i;
-
-  // display header
-  tft.setTextSize(2);
-  tft.setTextColor(TFT_DARKGREY);
-  tft_println_center(msg_scanner_results);
-
-  // add a gap after the header
-  if (droid_count > 0) {
-
-    // find where to start printing droid details so that it is vertically centered
-    y = tft.fontHeight();
-    tft.setTextSize(2);
-    y += (tft.fontHeight() * 3);
-    tft.setCursor(0, (tft.height()/2) - (y/2));
-
-    // print droid personality
-    tft.setTextSize(3);
-    tft.setTextColor(TFT_RED);
-
-    if (droids[current_droid].chipid < (sizeof(msg_droid_personalities) / sizeof(char *))) {
-      tft_println_center(msg_droid_personalities[droids[current_droid].chipid]);
-    } else {
-      snprintf(msg, MSG_LEN_MAX, "Unknown (%d)", droids[current_droid].chipid);
-      tft_println_center(msg);
-    }
-
-    // print droid affiliation
-    tft.setTextSize(2);
-    tft.setTextColor(TFT_GREEN);
-    switch(droids[current_droid].affid) {
-      case 1:
-        tft_println_center(msg_droid_affiliation[0]);
-        break;
-      case 5:
-        tft_println_center(msg_droid_affiliation[1]);
-        break;
-      case 9:
-        tft_println_center(msg_droid_affiliation[2]);
-        break;
-      default:
-        snprintf(msg, MSG_LEN_MAX, "Unknown (%d)", droids[current_droid].affid);
-        tft_println_center(msg);
-        break;
-    }
-
-    // print Bluetooth MAC address
-    tft.setTextSize(2);
-    tft.setTextColor(TFT_BLUE);
-    tft_println_center(droids[current_droid].pAdvertisedDevice->getAddress().toString().c_str());
-
-    // print RSSI
-    tft.setTextSize(2);
-    tft.setTextColor(TFT_PURPLE);
-    snprintf(msg, MSG_LEN_MAX, "rssi: %ddBm", droids[current_droid].pAdvertisedDevice->getRSSI());
-    tft_println_center(msg);
-
-    // print 
-    snprintf(msg, MSG_LEN_MAX, "%d of %d", current_droid + 1, droid_count);
-    tft.setTextSize(2);
-    tft.setTextColor(TFT_DARKGREY);
-    tft.setCursor((tft.width() - tft.textWidth(msg))/2, tft.height() - tft.fontHeight());
-    tft.print(msg);
-
-  // display message that no droids were found
-  } else {
-    tft.setTextSize(3);
-    tft.setTextColor(TFT_YELLOW);
-    tft.setCursor(0, (tft.height()/2) - tft.fontHeight());
-    tft_println_center("No Droids");
-    tft_println_center("In Area");
-  }
-}
-
-void display_menu(menu_item_t *items, uint8_t num_items) {
+void display_menu(menu_item_t* items, uint8_t num_items) {
   int16_t y = 0;
   int16_t w = 0;
   uint8_t row_padding, rows, row_height, row_width, i, offset;
@@ -659,18 +615,18 @@ void display_menu(menu_item_t *items, uint8_t num_items) {
   tft.fillScreen(TFT_BLACK);
   tft.setCursor(0, 0);
 
-  row_padding = 11;                                 // padding of 10, plus 1 for the border
-  row_height = tft.fontHeight() + (row_padding*2);
-  rows = tft.height() / row_height;                 // how many rows in the menu can fit on a single screen?
+  row_padding = 11;  // padding of 10, plus 1 for the border
+  row_height = tft.fontHeight() + (row_padding * 2);
+  rows = tft.height() / row_height;  // how many rows in the menu can fit on a single screen?
 
   // find the widest menu item and use that to determine the width of the box for the selected item
   row_width = 0;
-  for(i=0;i<num_items;i++) {
-    if ( tft.textWidth(items[i].text) > row_width ) {
+  for (i = 0; i < num_items; i++) {
+    if (tft.textWidth(items[i].text) > row_width) {
       row_width = tft.textWidth(items[i].text);
     }
   }
-  row_width += (row_padding*4);
+  row_width += (row_padding * 4);
 
   // calculate an offset such that when it comes time
   // to draw the menu, the selected item appears in the middle
@@ -678,40 +634,39 @@ void display_menu(menu_item_t *items, uint8_t num_items) {
   //
   // only do that in instances where the entire menu will NOT fit on the screen
   if (num_items > rows) {
-    for(offset=0;offset<num_items;offset++) {
+    for (offset = 0; offset < num_items; offset++) {
       if (state == items[offset].state) {
         break;
       }
     }
-    offset -= ((num_items-1)/2);
+    offset -= ((num_items - 1) / 2);
     offset %= num_items;
   } else {
     offset = 0;
   }
 
   // where do we start drawing the menu?
-  y = (tft.height()/2) - ((num_items * row_height)/2);
+  y = (tft.height() / 2) - ((num_items * row_height) / 2);
 
-  if (num_items > rows && rows%2 == 0) {
-    y += row_height/2;
+  if (num_items > rows && rows % 2 == 0) {
+    y += row_height / 2;
   }
 
   // draw the menu
-  for (i=offset;i<(num_items+offset);i++) {
-    if (state == items[i%num_items].state) {
+  for (i = offset; i < (num_items + offset); i++) {
+    if (state == items[i % num_items].state) {
       tft.setTextColor(TFT_GREEN);
       tft.drawRect(
-          (tft.width()/2) - (row_width/2),
-          y, 
-          row_width, 
-          row_height, 
-          TFT_CYAN
-       );
+        (tft.width() / 2) - (row_width / 2),
+        y,
+        row_width,
+        row_height,
+        TFT_CYAN);
     } else {
       tft.setTextColor(TFT_DARKGREEN);
     }
-    tft.setCursor((tft.width() / 2) - (tft.textWidth(items[i%num_items].text) / 2), y + row_padding + 1);
-    tft.print(items[i%num_items].text);
+    tft.setCursor((tft.width() / 2) - (tft.textWidth(items[i % num_items].text) / 2), y + row_padding + 1);
+    tft.print(items[i % num_items].text);
 
     y += row_height;
   }
@@ -726,8 +681,8 @@ void display_splash() {
   tft.setTextSize(3);
   y += tft.fontHeight();
   tft.setTextSize(2);
-  y += (tft.fontHeight()*4);
-  y = (tft.height() / 2) - (y/2);
+  y += (tft.fontHeight() * 4);
+  y = (tft.height() / 2) - (y / 2);
 
   // title
   tft.setTextSize(3);
@@ -757,34 +712,164 @@ void display_splash() {
   tft.print(msg_version);
 }
 
+void display_scanner_results() {
+  char msg[MSG_LEN_MAX];
+  uint16_t y = 0;
+  uint8_t i;
+
+  // display header
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_DARKGREY);
+  tft_println_center(msg_scanner_results);
+
+  // add a gap after the header
+  if (droid_count > 0) {
+
+    // find where to start printing droid details so that it is vertically centered
+    y = tft.fontHeight();
+    tft.setTextSize(2);
+    y += (tft.fontHeight() * 3);
+    tft.setCursor(0, (tft.height() / 2) - (y / 2));
+
+    // print droid personality
+    tft.setTextSize(3);
+    tft.setTextColor(TFT_RED);
+
+    if (droids[current_droid].chipid < (sizeof(msg_droid_personalities) / sizeof(char*))) {
+      tft_println_center(msg_droid_personalities[droids[current_droid].chipid]);
+    } else {
+      snprintf(msg, MSG_LEN_MAX, "Unknown (%d)", droids[current_droid].chipid);
+      tft_println_center(msg);
+    }
+
+    // print droid affiliation
+    tft.setTextSize(2);
+    tft.setTextColor(TFT_GREEN);
+    switch (droids[current_droid].affid) {
+      case 1:
+        tft_println_center(msg_droid_affiliation[0]);
+        break;
+      case 5:
+        tft_println_center(msg_droid_affiliation[1]);
+        break;
+      case 9:
+        tft_println_center(msg_droid_affiliation[2]);
+        break;
+      default:
+        snprintf(msg, MSG_LEN_MAX, "Unknown (%d)", droids[current_droid].affid);
+        tft_println_center(msg);
+        break;
+    }
+
+    // print Bluetooth MAC address
+    tft.setTextSize(2);
+    tft.setTextColor(TFT_BLUE);
+    tft_println_center(droids[current_droid].pAdvertisedDevice->getAddress().toString().c_str());
+
+    // print RSSI
+    tft.setTextSize(2);
+    tft.setTextColor(TFT_PURPLE);
+    snprintf(msg, MSG_LEN_MAX, "rssi: %ddBm", droids[current_droid].pAdvertisedDevice->getRSSI());
+    tft_println_center(msg);
+
+    // print
+    snprintf(msg, MSG_LEN_MAX, "%d of %d", current_droid + 1, droid_count);
+    tft.setTextSize(2);
+    tft.setTextColor(TFT_DARKGREY);
+    tft.setCursor((tft.width() - tft.textWidth(msg)) / 2, tft.height() - tft.fontHeight());
+    tft.print(msg);
+
+    // display message that no droids were found
+  } else {
+    tft.setTextSize(3);
+    tft.setTextColor(TFT_YELLOW);
+    tft.setCursor(0, (tft.height() / 2) - tft.fontHeight());
+    tft_println_center("No Droids");
+    tft_println_center("In Area");
+  }
+}
+
 void display_track_select() {
   char msg[MSG_LEN_MAX];
-  char M[] = "M";
-
-  uint8_t gap = 0;
+  
+  uint8_t vgap = 0;
+  uint8_t hgap = 0;
 
   // display instruction
   tft.setTextSize(3);
 
-  gap = (tft.height() - (tft.fontHeight() * 3))/3;
+  vgap = (tft.height() - (tft.fontHeight() * 3)) / 3;
 
-  tft.setCursor(tft.textWidth(M)*2, tft.getCursorY() + gap - 2);
+  snprintf(msg, MSG_LEN_MAX, "Group: 88");
+  hgap = (tft.width() - tft.textWidth(msg))/2;
+
+  tft.setCursor(hgap, tft.getCursorY() + vgap - 2);
   tft.setTextColor(TFT_BLUE);
   tft.print("Group: ");
-  tft.setTextColor((state == MODE_SOUND_GROUP) ? TFT_GREEN : TFT_DARKGREEN);
+  tft.setTextColor((state == MODE_SOUND_GROUP) ? TFT_GREEN : TFT_DARKGREY);
   snprintf(msg, MSG_LEN_MAX, "%d", (current_group + 1));
   tft.println(msg);
 
-  tft.setCursor(tft.textWidth(M)*2, tft.getCursorY() + 5);
+  tft.setCursor(hgap, tft.getCursorY() + 5);
   tft.setTextColor(TFT_RED);
   tft.print("Track: ");
-  tft.setTextColor((state == MODE_SOUND_TRACK) ? TFT_GREEN : TFT_DARKGREEN);
+  tft.setTextColor((state == MODE_SOUND_TRACK) ? TFT_GREEN : TFT_DARKGREY);
   snprintf(msg, MSG_LEN_MAX, "%d", (current_track + 1));
   tft.println(msg);
 
-  tft.setCursor(0, tft.getCursorY() + gap);
-  tft.setTextColor((state == MODE_SOUND_PLAY) ? TFT_GREEN : TFT_DARKGREEN);
+  tft.setCursor(0, tft.getCursorY() + vgap);
+  tft.setTextColor((state == MODE_SOUND_PLAY) ? TFT_GREEN : TFT_DARKGREY);
   tft_println_center("PLAY");
+}
+
+void display_volume() {
+  char msg[MSG_LEN_MAX];
+  uint8_t hgap = 0;
+  uint8_t vgap = 0;
+  uint8_t v2 = 0;
+
+  // sizes 3 and 4 are used on this screen. we need to take the heights of both sizes into account
+  // when calculating the size of the vertical gaps.
+  tft.setTextSize(3);
+  vgap = tft.fontHeight() * 2;
+
+  tft.setTextSize(5);
+  vgap = (tft.height() - tft.fontHeight() - vgap) / 3;
+  
+  tft.setCursor(tft.getCursorX(), vgap * 0.9);
+
+  // change volume color based on its value
+  if (droid_volume < 50) {
+    tft.setTextColor(TFT_CYAN);
+  } else if (droid_volume < 80) {
+    tft.setTextColor(TFT_YELLOW);
+  } else if (droid_volume < 100) {
+    tft.setTextColor(TFT_RED);
+  } else {
+    tft.setTextColor(TFT_MAGENTA);
+  }
+
+  snprintf(msg, MSG_LEN_MAX, "%d", droid_volume);
+  tft_println_center(msg);
+  tft.setCursor(tft.getCursorX(), tft.getCursorY() + (vgap * 0.9));
+  
+  tft.setTextSize(3);
+  tft.setTextColor(TFT_GREEN);
+  snprintf(msg, MSG_LEN_MAX, "VOL+");
+  hgap = (tft.width() - (tft.textWidth(msg) * 2)) / 3;
+  tft.setCursor(hgap, tft.getCursorY());
+
+  tft.setTextColor((state == MODE_VOLUME_UP ? TFT_GREEN : TFT_DARKGREY));
+  tft.print(msg);
+  tft.setCursor(tft.getCursorX() + hgap, tft.getCursorY());
+
+  tft.setTextColor((state == MODE_VOLUME_DOWN ? TFT_GREEN : TFT_DARKGREY));
+  snprintf(msg, MSG_LEN_MAX, "VOL-");
+  tft.println(msg);
+  tft.setCursor(tft.getCursorX(), tft.getCursorY() + (vgap * 0.3));
+
+  tft.setTextColor((state == MODE_VOLUME_TEST ? TFT_GREEN : TFT_DARKGREY));
+  tft_println_center("SET VOLUME");
 }
 
 void update_display() {
@@ -799,6 +884,14 @@ void update_display() {
   tft.setCursor(0, 0);
 
   switch (state) {
+
+    case MODE_VOLUME_UP:
+    case MODE_VOLUME_DOWN:
+    case MODE_VOLUME_TEST:
+    case MODE_VOLUME_TESTING: {
+      display_volume();
+      break;
+    }
 
     case MODE_BEACON_ON:
     case MODE_BEACON_OFF:
@@ -837,16 +930,17 @@ void update_display() {
       tft_println_center("TURN OFF YOUR");
       tft_println_center("DROID REMOTE");
 
-      tft.setTextSize(3);
+      tft.setTextSize(4);
       tft.setTextColor(TFT_ORANGE);
-      tft.setCursor(0, (tft.height() / 2) - (tft.fontHeight()/2));
+      //tft.setCursor(0, (tft.height() / 2) - (tft.fontHeight() / 2));
+      tft.setCursor(0, (tft.height() / 2) - (tft.fontHeight() / 4));
       tft_println_center("CONNECTING");
       break;
 
     case MODE_SCANNER_CONNECTED:
-      tft.setTextSize(3);
+      tft.setTextSize(4);
       tft.setTextColor(TFT_GREEN);
-      tft.setCursor(0, (tft.height() / 2) - (tft.fontHeight()/2));
+      tft.setCursor(0, (tft.height() / 2) - (tft.fontHeight() / 2));
       tft_println_center("CONNECTED");
       break;
 
@@ -868,13 +962,13 @@ void update_display() {
     case MODE_SOUND_SELECTED:
     case MODE_VOLUME_SELECTED:
       tft.setTextSize(4);
-      display_menu(connected_menu, sizeof(connected_menu)/sizeof(menu_item_t));
+      display_menu(connected_menu, sizeof(connected_menu) / sizeof(menu_item_t));
       break;
 
     case MODE_SCANNER_SELECTED:
     case MODE_BEACON_SELECTED:
       tft.setTextSize(4);
-      display_menu(top_menu, sizeof(top_menu)/sizeof(menu_item_t));
+      display_menu(top_menu, sizeof(top_menu) / sizeof(menu_item_t));
       break;
 
     case SPLASH:
@@ -885,13 +979,13 @@ void update_display() {
   tft_update = false;
 }
 
-void button1(button_press_t press_type);    // trying to use an enum as a parameter triggers a bug in arduino. adding an explicit prototype resolves the issue.
+void button1(button_press_t press_type);  // trying to use an enum as a parameter triggers a bug in arduino. adding an explicit prototype resolves the issue.
 void button1(button_press_t press_type) {
 
   static uint32_t last_time_btn1 = 0;
   static uint32_t last_time_btn1_down = 0;
 
-  switch(state) {
+  switch (state) {
     case SPLASH:
       state = MODE_SCANNER_SELECTED;
       tft_update = true;
@@ -916,16 +1010,11 @@ void button1(button_press_t press_type) {
       break;
 
     case MODE_SOUND_SELECTED:
-      current_group = 0;
-      current_track = 0;
+      //current_group = 0;
+      //current_track = 0;
       state = MODE_SOUND_GROUP;
       tft_update = true;
       break;
-
-//    case MODE_VOLUME_SELECTED:
-//      state = MODE_VOLUME_UP;
-//      tft_update = true;
-//      break;
 
     case MODE_SOUND_GROUP:
       if (press_type == SHORT_PRESS) {
@@ -952,6 +1041,34 @@ void button1(button_press_t press_type) {
       tft_update = true;
       break;
 
+    case MODE_VOLUME_SELECTED:
+      state = MODE_VOLUME_UP;
+      tft_update = true;
+      break;
+
+    case MODE_VOLUME_UP:
+      if (droid_volume > 90) {
+        droid_volume = 100;
+      } else {
+        droid_volume += 10;
+      }
+      tft_update = true;
+      break;
+
+    case MODE_VOLUME_DOWN:
+      if (droid_volume < 10) {
+        droid_volume = 0;
+      } else {
+        droid_volume -= 10;
+      }
+      tft_update = true;
+      break;
+
+    case MODE_VOLUME_TEST:
+      state = MODE_VOLUME_TESTING;
+      tft_update = true;
+      break;
+
     case MODE_BEACON_OFF:
       init_advertisement_data();
       set_payload_location_beacon(esp_random());
@@ -969,14 +1086,14 @@ void button1(button_press_t press_type) {
   }
 }
 
-void button2(button_press_t press_type);    // trying to use an enum as a parameter triggers a bug in arduino. adding an explicit prototype resolves the issue.
+void button2(button_press_t press_type);  // trying to use an enum as a parameter triggers a bug in arduino. adding an explicit prototype resolves the issue.
 void button2(button_press_t press_type) {
 
   static uint32_t last_time_btn2 = 0;
   static uint32_t last_time_btn2_down = 0;
 
   // do button 2 stuff
-  switch(state) {
+  switch (state) {
     case SPLASH:
       state = MODE_SCANNER_SELECTED;
       tft_update = true;
@@ -1030,23 +1147,43 @@ void button2(button_press_t press_type) {
             break;
         }
       } else {
-        droid_disconnect();
         state = MODE_SOUND_SELECTED;
       }
       tft_update = true;
       break;
+
+    case MODE_VOLUME_UP:
+    case MODE_VOLUME_DOWN:
+    case MODE_VOLUME_TEST:
+      if (press_type == SHORT_PRESS) {
+        switch(state) {
+          case MODE_VOLUME_UP:
+            state = MODE_VOLUME_DOWN;
+            break;
+          case MODE_VOLUME_DOWN:
+            state = MODE_VOLUME_TEST;
+            break;
+          case MODE_VOLUME_TEST:
+            state = MODE_VOLUME_UP;
+            break;
+        }
+      } else {
+        state = MODE_VOLUME_SELECTED;
+      }
+    tft_update = true;
+    break;
   }
 }
 
 void button_handler() {
   static uint32_t last_btn1_time = 0;
-  static uint8_t  last_btn1_state = HIGH;
+  static uint8_t last_btn1_state = HIGH;
   static uint32_t last_btn2_time = 0;
-  static uint8_t  last_btn2_state = HIGH;
+  static uint8_t last_btn2_state = HIGH;
 
   // gather current state of things
-  uint8_t  now_btn1_state = digitalRead(BUTTON1_PIN);
-  uint8_t  now_btn2_state = digitalRead(BUTTON2_PIN);
+  uint8_t now_btn1_state = digitalRead(BUTTON1_PIN);
+  uint8_t now_btn2_state = digitalRead(BUTTON2_PIN);
   uint32_t now_time = millis();
 
   if (now_btn1_state != last_btn1_state && now_time - last_btn1_time > LAZY_DEBOUNCE) {
@@ -1081,11 +1218,11 @@ void button_handler() {
 void setup() {
   uint8_t i;
 
-  // T-Display-S3 needs this in order to run off battery
-  #ifdef TDISPLAYS3
-    pinMode(15,OUTPUT);
-    digitalWrite(15, HIGH);
-  #endif
+// T-Display-S3 needs this in order to run off battery
+#ifdef TDISPLAYS3
+  pinMode(15, OUTPUT);
+  digitalWrite(15, HIGH);
+#endif
 
   // setup display
   tft.init();
@@ -1103,9 +1240,9 @@ void setup() {
   pClient = BLEDevice::createClient();
 
   // setup BLE scanner
-  pBLEScan = BLEDevice::getScan(); //create new scan
+  pBLEScan = BLEDevice::getScan();  //create new scan
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-  pBLEScan->setActiveScan(true); //active scan uses more power, but get results faster
+  pBLEScan->setActiveScan(true);  //active scan uses more power, but get results faster
   pBLEScan->setInterval(100);
   pBLEScan->setWindow(99);  // less or equal setInterval value
 
@@ -1125,7 +1262,7 @@ void setup() {
   last_activity = millis();
 
   // initialize the droid array
-  for(i=0;i<MAX_DROIDS;i++) {
+  for (i = 0; i < MAX_DROIDS; i++) {
     droids[i].pAdvertisedDevice = nullptr;
   }
 
@@ -1135,7 +1272,7 @@ void setup() {
 }
 
 void loop() {
-  
+
   button_handler();
 
   switch (state) {
@@ -1150,20 +1287,11 @@ void loop() {
 
     case MODE_SCANNER_CONNECTING:
       update_display();
-      if( droid_connect() ) {
+      if (droid_connect()) {
         state = MODE_SCANNER_CONNECTED;
       } else {
         state = MODE_SCANNER_CONNECT_FAILED;
       }
-      tft_update = true;
-      break;
-
-    case MODE_SOUND_PLAYING:
-      update_display();
-      Serial.println("Playing sound...");
-      droid_play_track();
-      delay(2000);
-      state = MODE_SOUND_PLAY;
       tft_update = true;
       break;
 
@@ -1176,6 +1304,26 @@ void loop() {
     case MODE_SCANNER_CONNECT_FAILED:
       delay(2000);
       state = MODE_SCANNER_RESULTS;
+      tft_update = true;
+      break;
+
+    case MODE_SOUND_PLAYING:
+      update_display();
+      Serial.println("Playing sound...");
+      droid_play_track();
+      delay(2000);
+      state = MODE_SOUND_PLAY;
+      tft_update = true;
+      break;
+
+    case MODE_VOLUME_TESTING:
+      update_display();
+      Serial.println("Testing volume...");
+      droid_set_volume();
+      droid_play_track();
+      //droid_play_next_track();
+      delay(2000);
+      state = MODE_VOLUME_TEST;
       tft_update = true;
       break;
   }
