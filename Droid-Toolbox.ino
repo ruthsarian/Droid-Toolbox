@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.54 : ruthsarian@gmail.com
+/* Droid Toolbox v0.55 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * NOTE: your droid remote MUST BE OFF for this to work!
@@ -103,6 +103,8 @@
  *     translation to other languages without having to sift through all the code
  *
  * HISTORY
+ *   v0.55 : Added BD personality to know personalities
+ *           Set delay between beacon reacons to 1 minute; BD units CORRECTLY interpret the value of 0x02 as a 10 second delay.
  *   v0.54 : Added volume control
  *           Started work on creating a generic menu system
  *           Centered the play track screen 
@@ -136,7 +138,7 @@
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
 
-#define MSG_VERSION "v0.54"
+#define MSG_VERSION "v0.55.ALPHA"
 
 #ifdef ARDUINO_ESP32S3_DEV  // this is assuming you're compiling for T-Display-S3 using the "ESP32S3 Dev Module" board.
 #define TDISPLAYS3
@@ -195,7 +197,7 @@ const uint8_t SWGE_LOCATION_BEACON_PAYLOAD[] = {
   0x0A,        // type of beacon (location beacon)
   0x04,        // length of beacon data
   0x01,        // location; also corresponds to the audio group the droid will select a sound from
-  0x02,        // minimum interval between droid reactions to the beacon; this value is multiplied by 5 to determine the interval in seconds. droids have a minimum reaction time of 60 seconds
+  0x0C,        // minimum interval between droid reactions to the beacon; this value is multiplied by 5 to determine the interval in seconds. droids have a minimum reaction time of 60 seconds (except for BD)
   0xA6,        // expected RSSI, beacon is ignored if weaker than value specified
   0x01,        // ? 0 or 1 otherwise droid will ignore the beacon
 };
@@ -323,6 +325,7 @@ const char* msg_droid_personalities[] = {
   "C1-10P",   // 0x0B
   "12",       // 0x0C
   "Blue 2",   // 0x0D
+  "BD Unit",  // 0x0E
 };
 const char* msg_droid_affiliation[] = {
   "Scoundrel",    // 0x01
