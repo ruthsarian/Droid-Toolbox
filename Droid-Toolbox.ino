@@ -1,4 +1,11 @@
-/* Droid Toolbox v0.55 : ruthsarian@gmail.com
+/* Droid Toolbox v0.56.ALPHA : ruthsarian@gmail.com
+ *
+ * v0.56 Plans:
+ *  - add beacon selection
+ *  - add menu caption option to generic menu display
+ *  - after selecting beacon mode, next menu is a 'beacon type' mode
+ *  - don't be afraid to hard-code the beacon packets, we have plenty of room for that
+ *
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * NOTE: your droid remote MUST BE OFF for this to work!
@@ -138,7 +145,7 @@
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
 
-#define MSG_VERSION "v0.55.ALPHA"
+#define MSG_VERSION "v0.56.ALPHA"
 
 #ifdef ARDUINO_ESP32S3_DEV  // this is assuming you're compiling for T-Display-S3 using the "ESP32S3 Dev Module" board.
 #define TDISPLAYS3
