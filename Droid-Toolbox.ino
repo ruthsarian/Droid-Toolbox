@@ -1,6 +1,14 @@
 #include <Arduino.h>
-/* Droid Toolbox v0.56 : ruthsarian@gmail.com
+/* Droid Toolbox v0.57.ALPHA : ruthsarian@gmail.com
  *
+ *
+ * v0.57 Plans:
+ *  - add beacon selection
+ *  - add ability to set delay between reactions of beacon
+ *  - after selecting beacon mode, next menu is a 'beacon type' mode
+ *  - don't be afraid to hard-code the beacon packets, we have plenty of room for that
+ *
+ * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * NOTE: your droid remote MUST BE OFF for this to work!
  * 
@@ -149,13 +157,11 @@
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
 
-#define MSG_VERSION "v0.55"
+#define MSG_VERSION "v0.57.ALPHA"
 
 #define C565(r,g,b) ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)    // macro to convert RGB values to TFT_eSPI color value
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
-
-#define MSG_VERSION "v0.56"
 
 #define PLAIN_TEXT_SIZE                   2                   // a generic size used throughout 
 #define PLAIN_TEXT_COLOR                  TFT_DARKGREY        // e.g. 'turn off your droid remote'
