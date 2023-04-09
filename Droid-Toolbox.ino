@@ -1,5 +1,6 @@
-/* Droid Toolbox v0.55 : ruthsarian@gmail.com
- * 
+#include <Arduino.h>
+/* Droid Toolbox v0.56 : ruthsarian@gmail.com
+ *
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * NOTE: your droid remote MUST BE OFF for this to work!
  * 
@@ -74,6 +75,12 @@
  *     https://programmer.ink/think/arduino-development-tft_espi-library-learning.html
  *     https://programmer.ink/think/color-setting-and-text-display-esp32-learning-tour-arduino-version.html.
  *     https://github.com/nkolban/esp32-snippets/blob/fe3d318acddf87c6918944f24e8b899d63c816dd/cpp_utils/BLEAdvertisedDevice.h
+ *
+ *   TFT_eSPI:
+ *     https://github.com/Bodmer/TFT_eSPI/blob/master/TFT_eSPI.h
+ *     https://github.com/Bodmer/TFT_eSPI/blob/master/TFT_eSPI.cpp
+ *     https://github.com/Bodmer/TFT_eSPI/blob/master/examples/Generic/Viewport_Demo/Viewport_commands.ino
+ *     https://github.com/Bodmer/TFT_eSPI/blob/master/examples/Generic/TFT_Button_Label_Datum/TFT_Button_Label_Datum.ino
  *   
  * TODO
  *   beacon:
@@ -103,6 +110,10 @@
  *     translation to other languages without having to sift through all the code
  *
  * HISTORY
+ *   v0.56 : added a caption to select menus; this puts back functionality present in earlier versions that i just prefer
+ *           short button 2 press on scan results now goes back 1 droid (if droids are found) instead of returning to main menu; long button 2 press will return to main menu
+ *           created some #defines to control color and font to make customization a little easier
+ *           personality chip ID 0x0C now identified as 'D-0' thanks to cre8or on swgediscord.com
  *   v0.55 : Added BD personality to know personalities
  *           Set delay between beacon reacons to 1 minute; BD units CORRECTLY interpret the value of 0x02 as a 10 second delay.
  *   v0.54 : Added volume control
@@ -140,29 +151,112 @@
 
 #define MSG_VERSION "v0.55"
 
+#define C565(r,g,b) ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)    // macro to convert RGB values to TFT_eSPI color value
+
+// CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
+
+#define MSG_VERSION "v0.56"
+
+#define PLAIN_TEXT_SIZE                   2                   // a generic size used throughout 
+#define PLAIN_TEXT_COLOR                  TFT_DARKGREY        // e.g. 'turn off your droid remote'
+
+#define SPLASH_TEXT_SIZE                  PLAIN_TEXT_SIZE     // title is SPLASH_TEXT_SIZE+1 size, all other text is SPLASH_TEXT_SIZE
+#define SPLASH_TITLE_COLOR                TFT_RED
+#define SPLASH_SUBTITLE_COLOR             TFT_ORANGE
+#define SPLASH_TEXT_COLOR                 TFT_LIGHTGREY
+#define SPLASH_VERSION_COLOR              C565(64,64,64)      // TFT_VERYDARKGREY
+
+#define MENU_SELECT_TEXT_PADDING          10
+#define MENU_SELECT_CAPTION_TEXT_SIZE     PLAIN_TEXT_SIZE
+#define MENU_SELECT_CAPTION_TEXT_COLOR    TFT_WHITE
+#define MENU_SELECT_TEXT_SIZE             (PLAIN_TEXT_SIZE*2)
+#define MENU_SELECT_TEXT_COLOR            C565(0,64,0)
+#define MENU_SELECT_SELECTED_TEXT_COLOR   TFT_GREEN
+#define MENU_SELECT_SELECTED_BORDER_COLOR TFT_BLUE
+
+#define ACTION_TEXT_SIZE                  (PLAIN_TEXT_SIZE*2)
+#define ACTION_TEXT_COLOR                 TFT_ORANGE          // e.g. 'CONNECTING'
+#define ACTION_RESULT_OK_TEXT_COLOR       TFT_GREEN           // e.g. 'CONNECTED'
+#define ACTION_RESULT_NG_TEXT_COLOR       TFT_RED             // e.g. 'CONNECT FAILED'
+
+#define DROID_REPORT_TEXT_SIZE            PLAIN_TEXT_SIZE     // personality text size is +1, otherwise this value is used throughout the screen
+#define DROID_REPORT_COLOR                PLAIN_TEXT_COLOR
+#define DROID_REPORT_PERSONALITY_COLOR    TFT_RED
+#define DROID_REPORT_AFFILIATION_COLOR    TFT_GREEN
+#define DROID_REPORT_ADDRESS_COLOR        TFT_BLUE
+#define DROID_REPORT_RSSI_COLOR           TFT_PURPLE          
+
+#define SLEEP_AFTER 5 * 60 * 1000  // how many milliseconds of inactivity before going to sleep/hibernation
+
+// static strings used throughout DroidToolbox
+
+const char msg_title[] = "Droid Toolbox";
+const char msg_email[] = "ruthsarian@gmail.com";
+const char msg_continue1[] = "press any button";
+const char msg_continue2[] = "to continue...";
+const char msg_version[] = MSG_VERSION;
+const char msg_select[] = "select an option";
+const char msg_beacon[] = "BEACON";
+const char msg_beacon_off[] = "OFF";
+const char msg_beacon_on[] = "ON";
+const char msg_scanner[] = "SCANNER";
+const char msg_scanner_active[] = "SCANNING";
+const char msg_droid_report[] = "DROID REPORT";
+const char msg_scanner_connecting[] = "CONNECTING";
+const char msg_turn_off_remote1[] = "TURN OFF YOUR";
+const char msg_turn_off_remote2[] = "DROID REMOTE";
+const char msg_scanner_connected[] = "CONNECTED";
+const char msg_connect[] = "CONNECT";
+const char msg_failed[]= "FAILED";
+const char msg_no_droids1[] = "No Droids";
+const char msg_no_droids2[] = "In Area";
+const char msg_unknown_int[] = "Unknown (%d)";
+const char msg_rssi[] = "rssi: %ddBm";
+const char msg_d_of_d[] = "%d of %d";
+    
+const char* msg_droid_personalities[] = {
+  "00",       // 0x00, should never encounter this
+  "R Unit",   // 0x01
+  "BB Unit",  // 0x02
+  "Blue",     // 0x03
+  "Gray",     // 0x04
+  "Red",      // 0x05
+  "Orange",   // 0x06
+  "Purple",   // 0x07
+  "Black",    // 0x08
+  "CB-23",    // 0x09, aka "Red 2"
+  "Yellow",   // 0x0A
+  "C1-10P",   // 0x0B
+  "D-O",      // 0x0C, 
+  "Blue 2",   // 0x0D
+  "BD Unit",  // 0x0E, BD is a Droid Depot droid at heart!
+};
+
+// CUSTOMIZATIONS END -- In theory you shouldn't have to edit anything below this line.
+
 #ifdef ARDUINO_ESP32S3_DEV  // this is assuming you're compiling for T-Display-S3 using the "ESP32S3 Dev Module" board.
 #define TDISPLAYS3
 #endif
 
-#define BUTTON1_PIN 0  // button 1 on the TTGO is GPIO 0
-#ifdef TDISPLAYS3      // button 2 on the TTGO is GPIO 35; GPIO14 for T-Display-S3
-#define BUTTON2_PIN 14
+#define BUTTON1_PIN       0   // button 1 on the TTGO T-Display and T-Display-S3 is GPIO 0
+#ifdef TDISPLAYS3          
+#define BUTTON2_PIN       14  // button 2 on the T-Display-S3 is GPIO14
 #else
-#define BUTTON2_PIN 35
+#define BUTTON2_PIN       35  // button 2 on the TTGO T-Display is GPIO 35
 #endif
-#define LAZY_DEBOUNCE 10      // time to wait after a button press before considering it a good press
-#define SHORT_PRESS_TIME 500  // maximum time, in milliseconds, that a button can be held before release and be considered a SHORT press
 
-#define MAX_DROIDS 20    // maximum number of droids to report on
-#define BLE_SCAN_TIME 5  // how many seconds to scan
+#define LAZY_DEBOUNCE     10  // time to wait after a button press before considering it a good press
+#define SHORT_PRESS_TIME  500 // maximum time, in milliseconds, that a button can be held before release and be considered a SHORT press
 
-#define PAYLOAD_SIZE 8  // size, in bytes, of a beacon payload
-#define MSG_LEN_MAX 32
-#define DROID_ADDR_LEN 20
+#define MAX_DROIDS        20  // maximum number of droids to report on
+#define BLE_SCAN_TIME     5   // how many seconds to scan
 
-#define SLEEP_AFTER 5 * 60 * 1000  // how many milliseconds of inactivity before going to sleep/hibernation
-#define WAKEUP_BUTTON GPIO_NUM_0   // wake up when button 1 is pressed _ONLY_IF_ it's been enabled in setup(); otherwise the reset button will wake up the TTGO
-#define WAKEUP_LEVEL LOW           // wake up from sleep when the button is pressed (LOW)
+#define PAYLOAD_SIZE      8   // size, in bytes, of a beacon payload
+#define MSG_LEN_MAX       32
+#define DROID_ADDR_LEN    20
+
+#define WAKEUP_BUTTON     GPIO_NUM_0  // wake up when button 1 is pressed _ONLY_IF_ it's been enabled in setup(); otherwise the reset button will wake up the TTGO
+#define WAKEUP_LEVEL      LOW         // wake up from sleep when the button is pressed (LOW)
 
 uint32_t last_activity;
 
@@ -246,7 +340,6 @@ typedef enum {
  *    
  */
 
-
 typedef enum {
   SPLASH,
 
@@ -279,7 +372,6 @@ typedef struct menu_item {
   char* text;
 } menu_item_t;
 
-
 menu_item_t top_menu[] = {
   { MODE_SCANNER_SELECTED, "SCANNER" },
   { MODE_BEACON_SELECTED, "BEACON" }
@@ -298,35 +390,6 @@ bool tft_update = true;     // flag to inidcate display needs to be updated
 uint8_t selected_item = 0;
  int8_t droid_volume = 100; // there is no way to 'read' the current volume setting, so we'll keep track with a variable
 
-const char msg_title[] = "Droid Toolbox";
-const char msg_email[] = "ruthsarian@gmail.com";
-const char msg_continue1[] = "press any button";
-const char msg_continue2[] = "to continue...";
-const char msg_version[] = MSG_VERSION;
-const char msg_select[] = "select an option";
-const char msg_beacon[] = "BEACON";
-const char msg_beacon_off[] = "OFF";
-const char msg_beacon_on[] = "ON";
-const char msg_scanner[] = "SCANNER";
-const char msg_scanner_active[] = "SCANNING";
-const char msg_scanner_results[] = "DROID REPORT";
-const char* msg_droid_personalities[] = {
-  "00",       // 0x00
-  "R Unit",   // 0x01
-  "BB Unit",  // 0x02
-  "Blue",     // 0x03
-  "Gray",     // 0x04
-  "Red",      // 0x05
-  "Orange",   // 0x06
-  "Purple",   // 0x07
-  "Black",    // 0x08
-  "CB-23",    // 0x09, aka "Red 2"
-  "Yellow",   // 0x0A
-  "C1-10P",   // 0x0B
-  "12",       // 0x0C
-  "Blue 2",   // 0x0D
-  "BD Unit",  // 0x0E
-};
 const char* msg_droid_affiliation[] = {
   "Scoundrel",    // 0x01
   "Resistance",   // 0x05
@@ -609,18 +672,54 @@ void tft_println_center(const char* msg) {
   tft.println(msg);
 }
 
+void reset_screen(void) {
+  tft.resetViewport();
+  tft.fillScreen(TFT_BLACK);
+  tft.setCursor(0, 0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+void display_captioned_menu (const char* caption, menu_item_t* items, uint8_t num_items) {
+  uint8_t h;
+
+  reset_screen(); // necessary? we call this from update_display already...
+
+  tft.setTextSize(MENU_SELECT_CAPTION_TEXT_SIZE);
+  tft.setTextColor(MENU_SELECT_CAPTION_TEXT_COLOR);
+  tft.setTextDatum(TC_DATUM);
+  tft.drawString(caption, tft.width()/2, MENU_SELECT_TEXT_PADDING);
+
+  h = tft.fontHeight() + MENU_SELECT_TEXT_PADDING;
+  tft.setViewport(0, h, tft.width(), tft.height()-h);
+
+  display_menu(items, num_items);
+}
+
 void display_menu(menu_item_t* items, uint8_t num_items) {
   int16_t y = 0;
   int16_t w = 0;
   uint8_t row_padding, rows, row_height, row_width, i, offset;
+  int8_t max_padding;
 
-  // reset screen
-  tft.fillScreen(TFT_BLACK);
-  tft.setCursor(0, 0);
+  // reset_screen();
 
-  row_padding = 11;  // padding of 10, plus 1 for the border
+  // set menu font size
+  tft.setTextSize(MENU_SELECT_TEXT_SIZE);
+
+  row_padding = MENU_SELECT_TEXT_PADDING + 1;  // +1 for the border
+
+  // since font size can be changed via a define, or that this code might run on a screen
+  // that i haven't tested with, check to make sure padding isn't so big that we can't show 
+  // at least 2 menu items on the screen.
+  max_padding = (tft.getViewportHeight() - (tft.fontHeight() * 2) - 4)/6;
+  if (max_padding < 1) {
+    row_padding = 0;
+  } else if (max_padding < row_padding) {
+    row_padding = max_padding;
+  }
+
   row_height = tft.fontHeight() + (row_padding * 2);
-  rows = tft.height() / row_height;  // how many rows in the menu can fit on a single screen?
+  rows = tft.getViewportHeight() / row_height;  // how many rows in the menu can fit on a single screen?
 
   // find the widest menu item and use that to determine the width of the box for the selected item
   row_width = 0;
@@ -649,7 +748,7 @@ void display_menu(menu_item_t* items, uint8_t num_items) {
   }
 
   // where do we start drawing the menu?
-  y = (tft.height() / 2) - ((num_items * row_height) / 2);
+  y = (tft.getViewportHeight() / 2) - ((num_items * row_height) / 2);
 
   if (num_items > rows && rows % 2 == 0) {
     y += row_height / 2;
@@ -658,17 +757,17 @@ void display_menu(menu_item_t* items, uint8_t num_items) {
   // draw the menu
   for (i = offset; i < (num_items + offset); i++) {
     if (state == items[i % num_items].state) {
-      tft.setTextColor(TFT_GREEN);
+      tft.setTextColor(MENU_SELECT_SELECTED_TEXT_COLOR);
       tft.drawRect(
-        (tft.width() / 2) - (row_width / 2),
+        (tft.getViewportWidth() / 2) - (row_width / 2),
         y,
         row_width,
         row_height,
-        TFT_CYAN);
+        MENU_SELECT_SELECTED_BORDER_COLOR);
     } else {
-      tft.setTextColor(TFT_DARKGREEN);
+      tft.setTextColor(MENU_SELECT_TEXT_COLOR);
     }
-    tft.setCursor((tft.width() / 2) - (tft.textWidth(items[i % num_items].text) / 2), y + row_padding + 1);
+    tft.setCursor((tft.getViewportWidth() / 2) - (tft.textWidth(items[i % num_items].text) / 2), y + row_padding + 1);
     tft.print(items[i % num_items].text);
 
     y += row_height;
@@ -680,39 +779,34 @@ void display_splash() {
   uint16_t y = 0;
 
   // surely there's an easier way to vertically position the splash screen text
-  y = 0;
-  tft.setTextSize(3);
-  y += tft.fontHeight();
-  tft.setTextSize(2);
-  y += (tft.fontHeight() * 4);
-  y = (tft.height() / 2) - (y / 2);
+  tft.setTextSize(1);
+  y = (tft.height() - ((tft.fontHeight() * (SPLASH_TEXT_SIZE + 1)) + (tft.fontHeight() * SPLASH_TEXT_SIZE * 4))) / 2;
+  tft.setCursor(0, y);
+
+  tft.setTextDatum(TC_DATUM);
 
   // title
-  tft.setTextSize(3);
-  tft.setTextColor(TFT_RED);
-  tft.setCursor((tft.width() / 2) - (tft.textWidth(msg_title) / 2), y);
-  tft.print(msg_title);
+  tft.setTextSize(SPLASH_TEXT_SIZE + 1);
+  tft.setTextColor(SPLASH_TITLE_COLOR);
+  tft.drawString(msg_title, tft.width()/2, y);
   y += tft.fontHeight();
 
   // contact
-  tft.setTextSize(2);
-  tft.setTextColor(TFT_ORANGE);
-  tft.setCursor((tft.width() / 2) - (tft.textWidth(msg_email) / 2), y);
-  tft.print(msg_email);
+  tft.setTextSize(SPLASH_TEXT_SIZE);
+  tft.setTextColor(SPLASH_SUBTITLE_COLOR);
+  tft.drawString(msg_email, tft.width()/2, y);
   y += (tft.fontHeight() * 2);
 
   // press any button...
-  tft.setTextColor(TFT_LIGHTGREY);
-  tft.setCursor((tft.width() / 2) - (tft.textWidth(msg_continue1) / 2), y);
-  tft.print(msg_continue1);
+  tft.setTextColor(SPLASH_TEXT_COLOR);
+  tft.drawString(msg_continue2, tft.width()/2, y);
   y += tft.fontHeight();
-  tft.setCursor((tft.width() / 2) - (tft.textWidth(msg_continue2) / 2), y);
-  tft.print(msg_continue2);
+  tft.drawString(msg_continue1, tft.width()/2, y);
 
   // version
-  tft.setTextColor(TFT_DARKGREY);
-  tft.setCursor(tft.width() - tft.textWidth(msg_version), tft.height() - tft.fontHeight());
-  tft.print(msg_version);
+  tft.setTextColor(SPLASH_VERSION_COLOR);
+  tft.setTextDatum(BR_DATUM);
+  tft.drawString(msg_version, tft.width(), tft.height());
 }
 
 void display_scanner_results() {
@@ -721,74 +815,73 @@ void display_scanner_results() {
   uint8_t i;
 
   // display header
-  tft.setTextSize(2);
-  tft.setTextColor(TFT_DARKGREY);
-  tft_println_center(msg_scanner_results);
+  tft.setTextSize(DROID_REPORT_TEXT_SIZE);
+  tft.setTextColor(DROID_REPORT_COLOR);
+  tft.setTextDatum(TC_DATUM);
+  tft.drawString(msg_droid_report, tft.width()/2, 0);
 
   // add a gap after the header
   if (droid_count > 0) {
 
     // find where to start printing droid details so that it is vertically centered
-    y = tft.fontHeight();
-    tft.setTextSize(2);
-    y += (tft.fontHeight() * 3);
-    tft.setCursor(0, (tft.height() / 2) - (y / 2));
+    tft.setTextSize(1);
+    y = (tft.height() - ((tft.fontHeight() * (DROID_REPORT_TEXT_SIZE + 1)) + (tft.fontHeight() * DROID_REPORT_TEXT_SIZE * 3)))/2;
 
     // print droid personality
-    tft.setTextSize(3);
-    tft.setTextColor(TFT_RED);
-
+    tft.setTextSize(DROID_REPORT_TEXT_SIZE + 1);
+    tft.setTextColor(DROID_REPORT_PERSONALITY_COLOR);
     if (droids[current_droid].chipid < (sizeof(msg_droid_personalities) / sizeof(char*))) {
-      tft_println_center(msg_droid_personalities[droids[current_droid].chipid]);
+      tft.drawString(msg_droid_personalities[droids[current_droid].chipid], tft.width()/2, y);
     } else {
-      snprintf(msg, MSG_LEN_MAX, "Unknown (%d)", droids[current_droid].chipid);
-      tft_println_center(msg);
+      snprintf(msg, MSG_LEN_MAX, msg_unknown_int, droids[current_droid].chipid);
+      tft.drawString(msg, tft.width()/2, y);
     }
 
     // print droid affiliation
-    tft.setTextSize(2);
-    tft.setTextColor(TFT_GREEN);
+    y += tft.fontHeight();
+    tft.setTextColor(DROID_REPORT_AFFILIATION_COLOR);
+    tft.setTextSize(DROID_REPORT_TEXT_SIZE);
     switch (droids[current_droid].affid) {
       case 1:
-        tft_println_center(msg_droid_affiliation[0]);
+        tft.drawString(msg_droid_affiliation[0], tft.width()/2, y);
         break;
       case 5:
-        tft_println_center(msg_droid_affiliation[1]);
+        tft.drawString(msg_droid_affiliation[1], tft.width()/2, y);
         break;
       case 9:
-        tft_println_center(msg_droid_affiliation[2]);
+        tft.drawString(msg_droid_affiliation[2], tft.width()/2, y);
         break;
       default:
-        snprintf(msg, MSG_LEN_MAX, "Unknown (%d)", droids[current_droid].affid);
-        tft_println_center(msg);
+        snprintf(msg, MSG_LEN_MAX, msg_unknown_int, droids[current_droid].affid);
+        tft.drawString(msg, tft.width()/2, y);
         break;
     }
 
     // print Bluetooth MAC address
-    tft.setTextSize(2);
-    tft.setTextColor(TFT_BLUE);
-    tft_println_center(droids[current_droid].pAdvertisedDevice->getAddress().toString().c_str());
+    y += tft.fontHeight();
+    tft.setTextColor(DROID_REPORT_ADDRESS_COLOR);
+    tft.drawString(droids[current_droid].pAdvertisedDevice->getAddress().toString().c_str(), tft.width()/2, y);
 
     // print RSSI
-    tft.setTextSize(2);
-    tft.setTextColor(TFT_PURPLE);
-    snprintf(msg, MSG_LEN_MAX, "rssi: %ddBm", droids[current_droid].pAdvertisedDevice->getRSSI());
-    tft_println_center(msg);
+    y += tft.fontHeight();
+    tft.setTextColor(DROID_REPORT_RSSI_COLOR);
+    snprintf(msg, MSG_LEN_MAX, msg_rssi, droids[current_droid].pAdvertisedDevice->getRSSI());
+    tft.drawString(msg, tft.width()/2, y);
 
     // print
-    snprintf(msg, MSG_LEN_MAX, "%d of %d", current_droid + 1, droid_count);
-    tft.setTextSize(2);
-    tft.setTextColor(TFT_DARKGREY);
-    tft.setCursor((tft.width() - tft.textWidth(msg)) / 2, tft.height() - tft.fontHeight());
-    tft.print(msg);
+    tft.setTextDatum(BC_DATUM);
+    tft.setTextColor(DROID_REPORT_COLOR);
+    snprintf(msg, MSG_LEN_MAX, msg_d_of_d, current_droid + 1, droid_count);
+    tft.drawString(msg, tft.width()/2, tft.height());
 
-    // display message that no droids were found
+  // display message that no droids were found
   } else {
-    tft.setTextSize(3);
-    tft.setTextColor(TFT_YELLOW);
-    tft.setCursor(0, (tft.height() / 2) - tft.fontHeight());
-    tft_println_center("No Droids");
-    tft_println_center("In Area");
+    tft.setTextSize(DROID_REPORT_TEXT_SIZE + 1);
+    tft.setTextColor(ACTION_RESULT_NG_TEXT_COLOR);
+    tft.setTextDatum(TC_DATUM);
+    y = (tft.height()/2) - tft.fontHeight();
+    tft.drawString(msg_no_droids1, tft.width()/2, y);
+    tft.drawString(msg_no_droids2, tft.width()/2, y + tft.fontHeight());
   }
 }
 
@@ -882,21 +975,11 @@ void update_display() {
     return;
   }
 
-  // reset screen
-  tft.fillScreen(TFT_BLACK);
-  tft.setCursor(0, 0);
+  reset_screen();
 
   switch (state) {
 
-    case MODE_VOLUME_UP:
-    case MODE_VOLUME_DOWN:
-    case MODE_VOLUME_TEST:
-    case MODE_VOLUME_TESTING: {
-      display_volume();
-      break;
-    }
-
-    case MODE_BEACON_ON:
+    case MODE_BEACON_ON:              // display_beacon
     case MODE_BEACON_OFF:
       tft.setTextSize(5);
       tft.setTextColor(TFT_BLUE);
@@ -916,65 +999,70 @@ void update_display() {
       }
       break;
 
-    case MODE_SCANNER_RESULTS:
-      display_scanner_results();
+    case MODE_VOLUME_UP:              // display_volume()
+    case MODE_VOLUME_DOWN:
+    case MODE_VOLUME_TEST:
+    case MODE_VOLUME_TESTING: {
+      display_volume();
       break;
+    }
 
-    case MODE_SCANNER_SCANNING:
-      tft.setTextSize(5);
-      tft.setTextColor(TFT_GREEN);
-      tft.setCursor((tft.width() / 2) - (tft.textWidth(msg_scanner_active) / 2), (tft.height() / 2) - (tft.fontHeight() / 2));
-      tft.print(msg_scanner_active);
-      break;
-
-    case MODE_SCANNER_CONNECTING:
-      tft.setTextSize(2);
-      tft.setTextColor(TFT_DARKGREY);
-      tft_println_center("TURN OFF YOUR");
-      tft_println_center("DROID REMOTE");
-
-      tft.setTextSize(4);
-      tft.setTextColor(TFT_ORANGE);
-      //tft.setCursor(0, (tft.height() / 2) - (tft.fontHeight() / 2));
-      tft.setCursor(0, (tft.height() / 2) - (tft.fontHeight() / 4));
-      tft_println_center("CONNECTING");
-      break;
-
-    case MODE_SCANNER_CONNECTED:
-      tft.setTextSize(4);
-      tft.setTextColor(TFT_GREEN);
-      tft.setCursor(0, (tft.height() / 2) - (tft.fontHeight() / 2));
-      tft_println_center("CONNECTED");
-      break;
-
-    case MODE_SOUND_GROUP:
+    case MODE_SOUND_GROUP:            // display_track_select()
     case MODE_SOUND_TRACK:
     case MODE_SOUND_PLAY:
     case MODE_SOUND_PLAYING:
       display_track_select();
       break;
 
-    case MODE_SCANNER_CONNECT_FAILED:
-      tft.setTextSize(3);
-      tft.setTextColor(TFT_RED);
-      tft.setCursor(0, (tft.height() / 2) - tft.fontHeight());
-      tft_println_center("CONNECT");
-      tft_println_center("FAILED");
-      break;
-
-    case MODE_SOUND_SELECTED:
+    case MODE_SOUND_SELECTED:         // display_connected_menu()
     case MODE_VOLUME_SELECTED:
-      tft.setTextSize(4);
-      display_menu(connected_menu, sizeof(connected_menu) / sizeof(menu_item_t));
+      display_captioned_menu(msg_select, connected_menu, sizeof(connected_menu) / sizeof(menu_item_t));
       break;
 
-    case MODE_SCANNER_SELECTED:
+    case MODE_SCANNER_CONNECTED:      // display_connected()
+      tft.setTextDatum(MC_DATUM);
+      tft.setTextSize(ACTION_TEXT_SIZE);
+      tft.setTextColor(ACTION_RESULT_OK_TEXT_COLOR);
+      tft.drawString(msg_scanner_connected, tft.width()/2, tft.height()/2);
+      break;
+
+    case MODE_SCANNER_CONNECT_FAILED: // display_connect_failed()
+      tft.setTextDatum(TC_DATUM);
+      tft.setTextSize(ACTION_TEXT_SIZE);
+      tft.setTextColor(ACTION_RESULT_NG_TEXT_COLOR);
+      tft.drawString(msg_connect, tft.width()/2, (tft.height()/2) - tft.fontHeight());
+      tft.drawString(msg_failed, tft.width()/2, (tft.height()/2));
+      break;
+
+    case MODE_SCANNER_CONNECTING:     // display_connecting()
+      tft.setTextDatum(TC_DATUM);
+      tft.setTextSize(PLAIN_TEXT_SIZE);
+      tft.setTextColor(PLAIN_TEXT_COLOR);
+      tft.drawString(msg_turn_off_remote1, tft.width()/2, 0);
+      tft.drawString(msg_turn_off_remote2, tft.width()/2, tft.fontHeight());
+      tft.setTextDatum(MC_DATUM);
+      tft.setTextSize(ACTION_TEXT_SIZE);
+      tft.setTextColor(ACTION_TEXT_COLOR);
+      tft.drawString(msg_scanner_connecting, tft.width()/2, tft.height()/2);
+      break;
+
+    case MODE_SCANNER_RESULTS:        // display_scanner_results()
+      display_scanner_results();
+      break;
+
+    case MODE_SCANNER_SCANNING:       // display_scanning()
+      tft.setTextDatum(MC_DATUM);
+      tft.setTextSize(ACTION_TEXT_SIZE);
+      tft.setTextColor(ACTION_TEXT_COLOR);
+      tft.drawString(msg_scanner_active, tft.width()/2, tft.height()/2);
+      break;
+
+    case MODE_SCANNER_SELECTED:       // display_top_menu()
     case MODE_BEACON_SELECTED:
-      tft.setTextSize(4);
-      display_menu(top_menu, sizeof(top_menu) / sizeof(menu_item_t));
+      display_captioned_menu(msg_select, top_menu, sizeof(top_menu) / sizeof(menu_item_t));
       break;
 
-    case SPLASH:
+    case SPLASH:                      // display_splash()
       display_splash();
       break;
   }
@@ -1001,20 +1089,20 @@ void button1(button_press_t press_type) {
 
     case MODE_SCANNER_RESULTS:
       if (droid_count > 0) {
-        if (press_type == SHORT_PRESS) {
-          current_droid = (current_droid + 1) % droid_count;
-        } else {
+        if (press_type == LONG_PRESS) {
           state = MODE_SCANNER_CONNECTING;
+          tft_update = true;
+        } else if (droid_count > 1) {
+          current_droid = (current_droid + 1) % droid_count;
+          tft_update = true;
         }
       } else {
         state = MODE_SCANNER_SCANNING;
+        tft_update = true;
       }
-      tft_update = true;
       break;
 
     case MODE_SOUND_SELECTED:
-      //current_group = 0;
-      //current_track = 0;
       state = MODE_SOUND_GROUP;
       tft_update = true;
       break;
@@ -1128,10 +1216,25 @@ void button2(button_press_t press_type) {
     case MODE_BEACON_SELECTED:
     case MODE_BEACON_ON:
     case MODE_BEACON_OFF:
-    case MODE_SCANNER_RESULTS:
       pAdvertising->stop();
       state = MODE_SCANNER_SELECTED;
       tft_update = true;
+      break;
+
+    case MODE_SCANNER_RESULTS:
+      if (press_type == LONG_PRESS || droid_count < 1) {
+        state = MODE_SCANNER_SELECTED;
+        tft_update = true;
+      } else {
+        if (droid_count > 1) {
+          if (current_droid == 0) {
+            current_droid = droid_count - 1;
+          } else {
+            current_droid = (current_droid - 1) % droid_count;
+          }
+          tft_update = true;
+        }
+      }
       break;
 
     case MODE_SOUND_GROUP:
@@ -1229,8 +1332,8 @@ void setup() {
 
   // setup display
   tft.init();
-  tft.fillScreen(TFT_BLACK);
   tft.setRotation(3);
+  reset_screen();
 
   // setup buttons as input
   pinMode(BUTTON1_PIN, INPUT);
