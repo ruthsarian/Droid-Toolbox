@@ -113,7 +113,7 @@
  *   v0.56 : added a caption to select menus; this puts back functionality present in earlier versions that i just prefer
  *           short button 2 press on scan results now goes back 1 droid (if droids are found) instead of returning to main menu; long button 2 press will return to main menu
  *           created some #defines to control color and font to make customization a little easier
- *           personality chip ID 0x0C now identified as 'D-0' thanks to cre8or on swgediscord.com
+ *           personality chip ID 0x0C now identified as 'D-O' thanks to cre8or on swgediscord.com
  *   v0.55 : Added BD personality to know personalities
  *           Set delay between beacon reacons to 1 minute; BD units CORRECTLY interpret the value of 0x02 as a 10 second delay.
  *   v0.54 : Added volume control
