@@ -157,11 +157,11 @@
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
 
-#define MSG_VERSION "v0.57.ALPHA"
-
 #define C565(r,g,b) ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)    // macro to convert RGB values to TFT_eSPI color value
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
+
+#define MSG_VERSION "v0.57.ALPHA"
 
 #define PLAIN_TEXT_SIZE                   2                   // a generic size used throughout 
 #define PLAIN_TEXT_COLOR                  TFT_DARKGREY        // e.g. 'turn off your droid remote'
