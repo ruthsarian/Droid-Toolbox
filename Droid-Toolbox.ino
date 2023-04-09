@@ -1,15 +1,6 @@
 #include <Arduino.h>
-/* Droid Toolbox v0.56.ALPHA : ruthsarian@gmail.com
+/* Droid Toolbox v0.56 : ruthsarian@gmail.com
  *
- * v0.56 Plans:
- *  - make button presses more consistent; in droid report, button 2 short should advance to next droid or go back 1 droid, not go back to menu
- *  - add beacon selection
- *  - add ability to set delay between reactions of beacon
- *  - add menu caption option to generic menu display
- *  - after selecting beacon mode, next menu is a 'beacon type' mode
- *  - don't be afraid to hard-code the beacon packets, we have plenty of room for that
- *
- * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * NOTE: your droid remote MUST BE OFF for this to work!
  * 
@@ -84,6 +75,12 @@
  *     https://programmer.ink/think/arduino-development-tft_espi-library-learning.html
  *     https://programmer.ink/think/color-setting-and-text-display-esp32-learning-tour-arduino-version.html.
  *     https://github.com/nkolban/esp32-snippets/blob/fe3d318acddf87c6918944f24e8b899d63c816dd/cpp_utils/BLEAdvertisedDevice.h
+ *
+ *   TFT_eSPI:
+ *     https://github.com/Bodmer/TFT_eSPI/blob/master/TFT_eSPI.h
+ *     https://github.com/Bodmer/TFT_eSPI/blob/master/TFT_eSPI.cpp
+ *     https://github.com/Bodmer/TFT_eSPI/blob/master/examples/Generic/Viewport_Demo/Viewport_commands.ino
+ *     https://github.com/Bodmer/TFT_eSPI/blob/master/examples/Generic/TFT_Button_Label_Datum/TFT_Button_Label_Datum.ino
  *   
  * TODO
  *   beacon:
@@ -156,7 +153,7 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION "v0.56.ALPHA"
+#define MSG_VERSION "v0.56"
 
 #define PLAIN_TEXT_SIZE                   2                   // a generic size used throughout 
 #define PLAIN_TEXT_COLOR                  TFT_DARKGREY        // e.g. 'turn off your droid remote'
@@ -171,9 +168,9 @@
 #define MENU_SELECT_CAPTION_TEXT_SIZE     PLAIN_TEXT_SIZE
 #define MENU_SELECT_CAPTION_TEXT_COLOR    TFT_WHITE
 #define MENU_SELECT_TEXT_SIZE             (PLAIN_TEXT_SIZE*2)
-#define MENU_SELECT_TEXT_COLOR            C565(0,64,0)        //  TFT_VERYDARKGREEN
-#define MENU_SELECT_SELECTED_TEXT_COLOR   TFT_GREEN           //  0x07E0; RGB(0, 255, 0)
-#define MENU_SELECT_SELECTED_BORDER_COLOR TFT_MAGENTA 
+#define MENU_SELECT_TEXT_COLOR            C565(0,64,0)
+#define MENU_SELECT_SELECTED_TEXT_COLOR   TFT_GREEN
+#define MENU_SELECT_SELECTED_BORDER_COLOR TFT_BLUE
 
 #define ACTION_TEXT_SIZE                  (PLAIN_TEXT_SIZE*2)
 #define ACTION_TEXT_COLOR                 TFT_ORANGE          // e.g. 'CONNECTING'
@@ -203,7 +200,6 @@ const char msg_beacon_on[] = "ON";
 const char msg_scanner[] = "SCANNER";
 const char msg_scanner_active[] = "SCANNING";
 const char msg_droid_report[] = "DROID REPORT";
-
 const char msg_scanner_connecting[] = "CONNECTING";
 const char msg_turn_off_remote1[] = "TURN OFF YOUR";
 const char msg_turn_off_remote2[] = "DROID REMOTE";
@@ -342,7 +338,6 @@ typedef enum {
  *    
  */
 
-
 typedef enum {
   SPLASH,
 
@@ -399,55 +394,6 @@ const char* msg_droid_affiliation[] = {
   "First Order",  // 0x09
 };
 
-#line 395 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-void load_payload_location_beacon_data();
-#line 399 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-void load_payload_droid_beacon_data();
-#line 403 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-void set_payload_droid_beacon();
-#line 407 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-void init_advertisement_data();
-#line 415 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-void set_payload_location_beacon(uint8_t location);
-#line 499 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-void notifyCallback( BLERemoteCharacteristic* pBLERemoteCharacteristic, uint8_t* pData, size_t length, bool isNotify);
-#line 536 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-void droid_disconnect();
-#line 544 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-bool droid_connect();
-#line 601 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-void droid_play_track();
-#line 621 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-void droid_play_next_track();
-#line 630 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-void droid_set_volume();
-#line 647 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-void ble_scan();
-#line 666 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-void tft_println_center(const char* msg);
-#line 671 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-void reset_screen(void);
-#line 678 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-void display_captioned_menu(const char* caption, menu_item_t* items, uint8_t num_items);
-#line 694 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-void display_menu(menu_item_t* items, uint8_t num_items);
-#line 774 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-void display_splash();
-#line 808 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-void display_scanner_results();
-#line 887 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-void display_track_select();
-#line 920 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-void display_volume();
-#line 970 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-void update_display();
-#line 1283 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-void button_handler();
-#line 1323 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-void setup();
-#line 1379 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
-void loop();
-#line 395 "C:\\dev\\Droid-Toolbox\\Droid-Toolbox.ino"
 void load_payload_location_beacon_data() {
   memcpy(payload, SWGE_LOCATION_BEACON_PAYLOAD, sizeof(uint8_t) * PAYLOAD_SIZE);
 }
@@ -1502,4 +1448,3 @@ void loop() {
     }
   }
 }
-
