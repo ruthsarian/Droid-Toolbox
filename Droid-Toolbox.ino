@@ -196,6 +196,7 @@
 
 // static strings used throughout DroidToolbox
 
+const char ble_adv_name[] = "DROIDTLBX"; // keep to 10 characters or less
 const char msg_title[] = "Droid Toolbox";
 const char msg_email[] = "ruthsarian@gmail.com";
 const char msg_continue1[] = "press any button";
@@ -219,7 +220,7 @@ const char msg_no_droids2[] = "In Area";
 const char msg_unknown_int[] = "Unknown (%d)";
 const char msg_rssi[] = "rssi: %ddBm";
 const char msg_d_of_d[] = "%d of %d";
-    
+
 const char* msg_droid_personalities[] = {
   "00",       // 0x00, should never encounter this
   "R Unit",   // 0x01
@@ -236,6 +237,23 @@ const char* msg_droid_personalities[] = {
   "D-O",      // 0x0C, 
   "Blue 2",   // 0x0D
   "BD Unit",  // 0x0E, BD is a Droid Depot droid at heart!
+};
+
+const char* msg_droid_affiliation[] = {
+  "Scoundrel",    // 0x01
+  "Resistance",   // 0x05
+  "First Order",  // 0x09
+};
+
+const char* msg_locations[] = {
+  "The Void",         // 0x00, should never encounter this
+  "Marketplace",      // 0x01
+  "Behind Depot",     // 0x02
+  "Resistance",       // 0x03
+  "Unknown",          // 0x04, have never found this beacon inside GE
+  "Droid Depot",      // 0x05
+  "Dok Ondar's",      // 0x06
+  "First Order"       // 0x07
 };
 
 // CUSTOMIZATIONS END -- In theory you shouldn't have to edit anything below this line.
@@ -280,7 +298,7 @@ BLEAdvertisementData oScanResponseData = BLEAdvertisementData();
 BLEAdvertisementData* pAdvertisementData = nullptr;  // must be pointer so i can delete class then recreate it every time beacon changes
                                                      // should i be using smart pointers?
 
-typedef struct droid {
+typedef struct {
   uint8_t chipid;
   uint8_t affid;
   BLEAdvertisedDevice* pAdvertisedDevice;
@@ -315,10 +333,23 @@ const uint8_t SWGE_DROID_BEACON_PAYLOAD[] = {
 uint8_t payload[PAYLOAD_SIZE];
 
 typedef enum {
+  DROID,
+  LOCATION
+} beacon_type_t;
+
+typedef struct {
+  beacon_type_t type; // 0=droid, 1=location
+  uint8_t param1;     // droid:personality[1:14], location:location[1:7]
+  uint8_t param2;     // droid:affiliation[1,5,9], location:interval[1:20]
+  uint8_t param3;     // location: minimum_rssi[]
+} beacon_t;
+
+beacon_t beacon;
+
+typedef enum {
   SHORT_PRESS,
   LONG_PRESS
 } button_press_t;
-
 
 /*
  * Menu/State Hierarchy
@@ -341,9 +372,56 @@ typedef enum {
  *                MODE_SOUND_TESTING
  *          MODE_SCANNER_CONNECT_FAILED
  *  MODE_BEACON_SELECTED
+ *    MODE
+
  *    MODE_BEACON_OFF
  *    MODE_BEACON_ON
  *    
+
+
+// TODO: look at firmware, what does last byte of location beacon data do????
+         also confirm multiply by 5 to get interval in seconds on 3rd to last byte in data
+
+// rssi: 0x80 = 0dBm, above 0x80 is negative dBm
+
+A6 = -38      166
+BA = -58      186
+9C = -28
+80 =   0
+  
+select beacon type
+  droid
+  location
+  random
+
+
+render beacon parameter screen based on value in droid struct
+if 'random', start at activate beacon option in parameter screen
+
+when coding, first write random_beacon() and modify/create activate_beacon() using droid struct.
+dump beacon parameters to serial
+
+then ... continue..
+
+
+
+
+
+
+ BEACON
+
+                 type: droid, location
+ location/personality: 
+          affiliation: (droid only, set automatically when personality is selected)
+    reaction interval: (location only)
+         minimum rssi: (location only)
+
+set or enable button
+
+random button
+
+beacon ON/OFF at top? or bottom? change color or dim colors when beacon is on??
+
  */
 
 typedef enum {
@@ -373,7 +451,7 @@ typedef enum {
   MODE_BEACON_ON
 } system_state_t;
 
-typedef struct menu_item {
+typedef struct {
   system_state_t state;
   char* text;
 } menu_item_t;
@@ -396,11 +474,13 @@ bool tft_update = true;     // flag to inidcate display needs to be updated
 uint8_t selected_item = 0;
  int8_t droid_volume = 100; // there is no way to 'read' the current volume setting, so we'll keep track with a variable
 
-const char* msg_droid_affiliation[] = {
-  "Scoundrel",    // 0x01
-  "Resistance",   // 0x05
-  "First Order",  // 0x09
-};
+void init_advertisement_data() {
+  if (pAdvertisementData != nullptr) {
+    delete pAdvertisementData;
+  }
+  pAdvertisementData = new BLEAdvertisementData();
+  pAdvertisementData->setName(ble_adv_name);
+}
 
 void load_payload_location_beacon_data() {
   memcpy(payload, SWGE_LOCATION_BEACON_PAYLOAD, sizeof(uint8_t) * PAYLOAD_SIZE);
@@ -414,17 +494,105 @@ void set_payload_droid_beacon() {
   load_payload_droid_beacon_data();
 }
 
-void init_advertisement_data() {
-  if (pAdvertisementData != nullptr) {
-    delete pAdvertisementData;
-  }
-  pAdvertisementData = new BLEAdvertisementData();
-  pAdvertisementData->setName("DROIDBOX");
-}
-
 void set_payload_location_beacon(uint8_t location) {
   load_payload_location_beacon_data();
   payload[4] = (location % 7) + 1;
+  pAdvertisementData->setManufacturerData(std::string(reinterpret_cast<char*>(payload), PAYLOAD_SIZE));
+  pAdvertising->setAdvertisementData(*pAdvertisementData);
+}
+
+// populate the global beacon variable with random(ish) values
+void set_random_beacon() {
+
+  Serial.println("Generating a random beacon:");
+
+  // create a DROID beacon
+  if (esp_random() % 2)  {
+
+    beacon.type = DROID;
+    Serial.println("  Type: DROID");
+
+    // set personality chip
+    beacon.param1 = (esp_random() % ((sizeof(msg_droid_personalities) / sizeof(char*)) - 1)) + 1;
+    Serial.print("  Personality: ");
+    Serial.println(msg_droid_personalities[beacon.param1]);
+
+    // set affiliation based on personality chip
+    Serial.print("  Affiliation: ");
+    switch(beacon.param1) {
+
+      // resistance
+      case 3:
+      case 6:
+      case 10:
+      case 11:
+      case 12:
+      case 14:
+        beacon.param2 = 5;
+        Serial.println("Resistance");
+        break;
+
+      // first order
+      case 5:
+      case 8:
+        beacon.param2 = 9;
+        Serial.println("First Order");
+        break;
+
+      // scoundrel
+      default:
+        beacon.param2 = 1;
+        Serial.println("Scoundrel");
+        break;
+    }
+
+  // create a LOCATION beacon
+  } else {
+    beacon.type = LOCATION;
+    Serial.println("  Type: LOCATION");
+
+    // set location
+    //beacon.param1 = (esp_random() % 7) + 1;
+    beacon.param1 = (esp_random() % ((sizeof(msg_locations) / sizeof(char*)) - 1)) + 1;
+    Serial.print("  Location: ");
+    Serial.println(msg_locations[beacon.param1]);
+
+    // set reaction interval (in minutes), could go as high as 19, but keeping it low on purpose
+    beacon.param2 = (esp_random() % 3) + 1;
+    Serial.print("  Interval: ");
+    Serial.println(beacon.param2);
+
+    // set minimum RSSI for droid to react; while this value is stored as an unsigned value, think of it as a negative value in dBm; e.g. 38 = -38dBm
+    beacon.param3 = 38;
+    Serial.print("  Minimum RSSI: -");
+    Serial.print(beacon.param3);
+    Serial.println("dBm");
+  }
+}
+
+void set_payload_from_beacon() {
+  if (beacon.type == DROID) {
+    load_payload_droid_beacon_data();
+
+    // set affiliation
+    payload[6] = 0x80 + (beacon.param2 * 2);
+
+    // set personality chip id
+    payload[7] = beacon.param1;
+  } else {
+    load_payload_droid_beacon_data();
+
+    // set location
+    payload[4] = beacon.param1;
+
+    // set reaction interval
+    payload[5] = (beacon.param2 % 20) * 12;
+
+    // set minimum RSSI for reaction
+    payload[6] = 0x80 + beacon.param3;
+  }
+
+  // load the payload into the advertisement data
   pAdvertisementData->setManufacturerData(std::string(reinterpret_cast<char*>(payload), PAYLOAD_SIZE));
   pAdvertising->setAdvertisementData(*pAdvertisementData);
 }
@@ -1168,7 +1336,9 @@ void button1(button_press_t press_type) {
 
     case MODE_BEACON_OFF:
       init_advertisement_data();
-      set_payload_location_beacon(esp_random());
+      //set_payload_location_beacon(esp_random());
+      set_random_beacon();
+      set_payload_from_beacon();
       pAdvertising->start();
       state = MODE_BEACON_ON;
       tft_update = true;
@@ -1364,7 +1534,7 @@ void setup() {
 
   // setup beacon payload
   init_advertisement_data();
-  set_payload_location_beacon(esp_random());
+  //set_payload_location_beacon(esp_random());
 
   // define deep sleep wakeup trigger; if commented out ESP32 goes into hibernation instead of deep sleep and only wakes up with the reset button
   // memory is lost from deep sleep; for our purposes deep sleep and hibernation are the same thing
