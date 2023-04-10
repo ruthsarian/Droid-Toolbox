@@ -6,7 +6,6 @@
  *  - add beacon selection
  *  - add ability to set delay between reactions of beacon
  *  - after selecting beacon mode, next menu is a 'beacon type' mode
- *  - don't be afraid to hard-code the beacon packets, we have plenty of room for that
  *
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
@@ -196,30 +195,30 @@
 
 // static strings used throughout DroidToolbox
 
-const char ble_adv_name[] = "DROIDTLBX"; // keep to 10 characters or less
-const char msg_title[] = "Droid Toolbox";
-const char msg_email[] = "ruthsarian@gmail.com";
-const char msg_continue1[] = "press any button";
-const char msg_continue2[] = "to continue...";
-const char msg_version[] = MSG_VERSION;
-const char msg_select[] = "select an option";
-const char msg_beacon[] = "BEACON";
-const char msg_beacon_off[] = "OFF";
-const char msg_beacon_on[] = "ON";
-const char msg_scanner[] = "SCANNER";
-const char msg_scanner_active[] = "SCANNING";
-const char msg_droid_report[] = "DROID REPORT";
+const char ble_adv_name[]           = "DROIDTLBX";              // keep to 10 characters or less
+const char msg_version[]            = MSG_VERSION;
+const char msg_title[]              = "Droid Toolbox";
+const char msg_email[]              = "ruthsarian@gmail.com";
+const char msg_continue1[]          = "press any button";
+const char msg_continue2[]          = "to continue...";
+const char msg_select[]             = "select an option";
+const char msg_beacon[]             = "BEACON";
+const char msg_beacon_off[]         = "OFF";
+const char msg_beacon_on[]          = "ON";
+const char msg_scanner[]            = "SCANNER";
+const char msg_scanner_active[]     = "SCANNING";
+const char msg_droid_report[]       = "DROID REPORT";
 const char msg_scanner_connecting[] = "CONNECTING";
-const char msg_turn_off_remote1[] = "TURN OFF YOUR";
-const char msg_turn_off_remote2[] = "DROID REMOTE";
-const char msg_scanner_connected[] = "CONNECTED";
-const char msg_connect[] = "CONNECT";
-const char msg_failed[]= "FAILED";
-const char msg_no_droids1[] = "No Droids";
-const char msg_no_droids2[] = "In Area";
-const char msg_unknown_int[] = "Unknown (%d)";
-const char msg_rssi[] = "rssi: %ddBm";
-const char msg_d_of_d[] = "%d of %d";
+const char msg_turn_off_remote1[]   = "TURN OFF YOUR";
+const char msg_turn_off_remote2[]   = "DROID REMOTE";
+const char msg_scanner_connected[]  = "CONNECTED";
+const char msg_connect[]            = "CONNECT";
+const char msg_failed[]             = "FAILED";
+const char msg_no_droids1[]         = "No Droids";
+const char msg_no_droids2[]         = "In Area";
+const char msg_unknown_int[]        = "Unknown (%d)";
+const char msg_rssi[]               = "rssi: %ddBm";
+const char msg_d_of_d[]             = "%d of %d";
 
 const char* msg_droid_personalities[] = {
   "00",       // 0x00, should never encounter this
