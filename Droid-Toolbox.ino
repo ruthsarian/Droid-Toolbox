@@ -490,17 +490,6 @@ void load_payload_droid_beacon_data() {
   memcpy(payload, SWGE_DROID_BEACON_PAYLOAD, sizeof(uint8_t) * PAYLOAD_SIZE);
 }
 
-void set_payload_droid_beacon() {
-  load_payload_droid_beacon_data();
-}
-
-void set_payload_location_beacon(uint8_t location) {
-  load_payload_location_beacon_data();
-  payload[4] = (location % 7) + 1;
-  pAdvertisementData->setManufacturerData(std::string(reinterpret_cast<char*>(payload), PAYLOAD_SIZE));
-  pAdvertising->setAdvertisementData(*pAdvertisementData);
-}
-
 // populate the global beacon variable with random(ish) values
 void set_random_beacon() {
 
@@ -570,7 +559,10 @@ void set_random_beacon() {
   }
 }
 
+// set the advertising payload based on the data in the global beacon variable
 void set_payload_from_beacon() {
+
+  // DROID beacon type
   if (beacon.type == DROID) {
     load_payload_droid_beacon_data();
 
@@ -579,8 +571,10 @@ void set_payload_from_beacon() {
 
     // set personality chip id
     payload[7] = beacon.param1;
+
+  // LOCATION beacon type
   } else {
-    load_payload_droid_beacon_data();
+    load_payload_location_beacon_data();
 
     // set location
     payload[4] = beacon.param1;
@@ -1336,7 +1330,6 @@ void button1(button_press_t press_type) {
 
     case MODE_BEACON_OFF:
       init_advertisement_data();
-      //set_payload_location_beacon(esp_random());
       set_random_beacon();
       set_payload_from_beacon();
       pAdvertising->start();
