@@ -2,32 +2,13 @@
 /* Droid Toolbox v0.57.ALPHA : ruthsarian@gmail.com
  *
  *
- * v0.57 Plans:
+ * v0.57 TODO:
  *  - finish moving all colors into the #define section at top of code
- *  - add beacon selection
- *  - add ability to set delay between reactions of beacon
- *  - after selecting beacon mode, next menu is a 'beacon type' mode
- *  - need a support function to handle button control when displaying menus so i don't have to hardcode every menu into the button handlers
- *  - need to alter display_menu a bit, if menu is taller than viewport, don't render beyond last item in menu as next item starts at beginning
  *  - look at box drawn around selected menu item; is it a little vertically off-center???
- *
- *
- *  TODO
- *  - move state to some kind of struct ?
- *  - create some kind of sub-state variable where we will store numbers
- *  - menus will become arrays of strings only, and substate will become an index into that array of strings
- *
- *
- *
  *  - create system where current state has some associated global variable that we can increment to differentiate between sub-states? 
- *
- *  - create a diplay_menu() version that takes an index and an array of strings and displays the array of strings and highlights whatever is specified by index?
- *
- *  - i need to reset beacon data if i change from a droid to a location or vice versa
- *  - i need to tweak the property setting
- *  - maybe an EXPERT beacon mode??
- *  - change beacon type order? 
- *  - remember previous beacon type selection so we can go back to it in the menu??
+ *  - EXPERT beacon mode
+ *  - remember previous beacon type selection so we can go back to it in the menu
+ *    e.g. some kind of "previous_state" variable
  *
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
@@ -139,6 +120,12 @@
  *     translation to other languages without having to sift through all the code
  *
  * HISTORY
+ *   v0.57 : added ability to select which beacon the droid toolbox will produce
+ *           added global beacon variable to store the details of the beacon that will be produced
+ *           lots of work on the underlying menu system and helper functions; still not pretty enough for my tastes
+ *           added global variable to track currently selected item in a menu, rather than have a STATE for each menu option as adding a state for
+ *             each droid and location beacon would have been... a bit much.
+ *           moving more control of the display options (text color, size, etc) to the block of #defines at the top of the code
  *   v0.56 : added a caption to select menus; this puts back functionality present in earlier versions that i just prefer
  *           short button 2 press on scan results now goes back 1 droid (if droids are found) instead of returning to main menu; long button 2 press will return to main menu
  *           created some #defines to control color and font to make customization a little easier
@@ -183,19 +170,19 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.57.ALPHA"         // the version displayed on the splash screen at the lower right
+#define MSG_VERSION                         "v0.57.ALPHA"           // the version displayed on the splash screen at the lower right
 
-#define DEFAULT_TEXT_SIZE                   2                     // a generic size used throughout 
-#define DEFAULT_TEXT_COLOR                  TFT_DARKGREY          // e.g. 'turn off your droid remote'
-#define DEFAULT_TEXT_PADDING                10
+#define DEFAULT_TEXT_SIZE                   2                       // a generic size used throughout 
+#define DEFAULT_TEXT_COLOR                  TFT_DARKGREY            // e.g. 'turn off your droid remote'
+#define DEFAULT_TEXT_PADDING                10                      // necessary? perhaps just use a formula throughout the code? e.g. (tft.fontHeight() / 3)
 #define DEFAULT_SELECTED_TEXT_COLOR         TFT_WHITE
 #define DEFAULT_SELECTED_BORDER_COLOR       TFT_YELLOW
 
-#define SPLASH_TEXT_SIZE                    DEFAULT_TEXT_SIZE     // title is SPLASH_TEXT_SIZE+1 size, all other text is SPLASH_TEXT_SIZE
+#define SPLASH_TEXT_SIZE                    DEFAULT_TEXT_SIZE       // title is SPLASH_TEXT_SIZE+1 size, all other text is SPLASH_TEXT_SIZE
 #define SPLASH_TITLE_COLOR                  TFT_RED
 #define SPLASH_SUBTITLE_COLOR               TFT_ORANGE
 #define SPLASH_TEXT_COLOR                   TFT_LIGHTGREY
-#define SPLASH_VERSION_COLOR                C565(64,64,64)        // TFT_VERYDARKGREY
+#define SPLASH_VERSION_COLOR                C565(64,64,64)          // TFT_VERYDARKGREY
 
 #define MENU_SELECT_TEXT_PADDING            DEFAULT_TEXT_PADDING
 #define MENU_SELECT_CAPTION_TEXT_SIZE       DEFAULT_TEXT_SIZE
@@ -205,10 +192,10 @@
 #define MENU_SELECT_SELECTED_TEXT_COLOR     TFT_GREEN
 #define MENU_SELECT_SELECTED_BORDER_COLOR   TFT_BLUE
 
-#define BEACON_SELECT_TEXT_PADDING          DEFAULT_TEXT_PADDING
+#define BEACON_SELECT_TEXT_PADDING          8
 #define BEACON_SELECT_CAPTION_TEXT_SIZE     DEFAULT_TEXT_SIZE
 #define BEACON_SELECT_CAPTION_TEXT_COLOR    TFT_WHITE
-#define BEACON_SELECT_TEXT_SIZE             (DEFAULT_TEXT_SIZE+1)
+#define BEACON_SELECT_TEXT_SIZE             (DEFAULT_TEXT_SIZE + 1)
 #define BEACON_SELECT_TEXT_COLOR            C565(0,64,0)
 #define BEACON_SELECT_SELECTED_TEXT_COLOR   TFT_GREEN
 #define BEACON_SELECT_SELECTED_BORDER_COLOR TFT_BLUE
@@ -240,7 +227,7 @@
 
 // static strings used throughout DroidToolbox
 
-const char ble_adv_name[]               = "DROIDTLBX";              // keep to 10 characters or less
+const char ble_adv_name[]               = "DROIDTLBX";              // this is the name the toolbox's beacon will appear as, keep to 10 characters or less
 const char msg_version[]                = MSG_VERSION;
 const char msg_title[]                  = "Droid Toolbox";
 const char msg_email[]                  = "ruthsarian@gmail.com";
@@ -263,7 +250,7 @@ const char msg_connect[]                = "CONNECT";
 const char msg_failed[]                 = "FAILED";
 const char msg_no_droids1[]             = "No Droids";
 const char msg_no_droids2[]             = "In Area";
-const char msg_unknown_int[]            = "Unknown (%d)";
+const char msg_unknown_int[]            = "Unknown (%d)";           // probably need to remove the printf variables from these strings
 const char msg_rssi[]                   = "rssi: %ddBm";
 const char msg_d_of_d[]                 = "%d of %d";
 const char msg_sounds[]                 = "SOUNDS";
@@ -274,18 +261,6 @@ const char msg_location[]               = "LOCATION";
 const char msg_beacon_settings[]        = "BEACON SETTINGS";
 const char msg_activate_beacon[]        = "beacon inactive";
 const char msg_beacon_active[]          = "BEACON ACTIVE";
-
-const char* msg_beacon_droid_param[NUM_BEACON_PARAMS] = {
-  "PERSONALITY",
-  "AFFILIATION",
-  ""
-};
-
-const char* msg_beacon_location_param[NUM_BEACON_PARAMS] = {
-  "LOCATION", 
-  "REACT INTERVAL", 
-  "MIN RSSI"
-};
 
 // the index of a personality name in this array should correspond to that personality's ID
 // not following this will result in the wrong names being displayed
@@ -326,11 +301,23 @@ const char* msg_droid_affiliation[] = {
   "First Order"   // 0x09
 };
 
+const char* msg_beacon_droid_param[NUM_BEACON_PARAMS] = {
+  "PERSONALITY",
+  "AFFILIATION",
+  ""
+};
+
+const char* msg_beacon_location_param[NUM_BEACON_PARAMS] = {
+  "LOCATION", 
+  "REACT INTERVAL", 
+  "MIN RSSI"
+};
+
 // CUSTOMIZATIONS END -- In theory you shouldn't have to edit anything below this line.
 
-#define DROID_ID_R_UNIT           0x01  // these values should match their corresponding personality ID
-#define DROID_ID_BB_UNIT          0x02
-#define DROID_ID_BLUE             0x03
+#define DROID_ID_R_UNIT           0x01  // these values should match the ID of the corresponding personality
+#define DROID_ID_BB_UNIT          0x02  // these values should ALSO match the index value of the 
+#define DROID_ID_BLUE             0x03  // corresponding personality in the msg_droid_personalities[] array
 #define DROID_ID_GRAY             0x04
 #define DROID_ID_RED              0x05
 #define DROID_ID_ORANGE           0x06
@@ -343,9 +330,9 @@ const char* msg_droid_affiliation[] = {
 #define DROID_ID_BLUE_2           0x0D
 #define DROID_ID_BD_UNIT          0x0E
 
-#define LOCATION_ID_MARKET        0x01  // these values should match their corresponding location ID
-#define LOCATION_ID_BEHIND_DEPOT  0x02
-#define LOCATION_ID_RESISTANCE    0x03
+#define LOCATION_ID_MARKET        0x01  // these values should match the ID of the corresponding location
+#define LOCATION_ID_BEHIND_DEPOT  0x02  // these values should ALSO match the index value of the 
+#define LOCATION_ID_RESISTANCE    0x03  // corresponding location in the msg_locations[] array
 #define LOCATION_ID_UNKNOWN       0x04
 #define LOCATION_ID_DROID_DEPOT   0x05
 #define LOCATION_ID_DOK_ONDAR     0x06
@@ -436,7 +423,6 @@ typedef struct {
                                       // 1 = droid:affiliation[1,5,9], location:interval[1:20]
                                       // 2 =                           location:minimum_rssi[58:28]
 } beacon_t;
-
 beacon_t beacon;
 
 typedef enum {
@@ -444,14 +430,13 @@ typedef enum {
   LONG_PRESS
 } button_press_t;
 
-
 typedef enum {
   SPLASH,                 // splash screen
   TOP_MENU,               // top menu; beacon or scanner
-
   BEACON_TYPE_MENU,       // display the types of beacons to pick from
   BEACON_DROID_LIST,      // display a list of droid beacons to pick from
   BEACON_LOCATION_LIST,   // display a list of location beacons to pick from
+  BEACON_RANDOM,          // generate a random beacon
   BEACON_ACTIVATE,        // display the option to activate the beacon
   BEACON_ACTIVE,          // display the currently active beacon
 
@@ -486,12 +471,13 @@ menu_item_t top_menu[] = {
 
 menu_item_t beacon_type_menu[] = {
   { BEACON_LOCATION_LIST, msg_location },
-  { BEACON_DROID_LIST,    msg_droid    }
+  { BEACON_DROID_LIST,    msg_droid    },
+  { BEACON_RANDOM,        msg_random   },
 };
 
 menu_item_t connected_menu[] = {
   { SOUND_GROUP, msg_sounds },
-  { VOLUME_UP, msg_volume }
+  { VOLUME_UP,   msg_volume },
 };
 
 typedef struct {
@@ -853,8 +839,8 @@ bool droid_connect() {
 }
 
 void droid_play_track() {
-  uint8_t cmd_set_group[] = { 0x27, 0x42, 0x0f, 0x44, 0x44, 0x00, 0x1f, 0x07 };
-  uint8_t cmd_play_track[] = { 0x27, 0x42, 0x0f, 0x44, 0x44, 0x00, 0x18, 0x00 };
+  static uint8_t cmd_set_group[]  = { 0x27, 0x42, 0x0f, 0x44, 0x44, 0x00, 0x1f, 0x07 };
+  static uint8_t cmd_play_track[] = { 0x27, 0x42, 0x0f, 0x44, 0x44, 0x00, 0x18, 0x00 };
 
   if (pClient->isConnected() && pRemoteCharacteristicCmd != nullptr) {
     cmd_set_group[7] = current_group % 12;
@@ -873,8 +859,7 @@ void droid_play_track() {
 }
 
 void droid_play_next_track() {
-  uint8_t cmd_play_next_track[] = { 0x26, 0x42, 0x0f, 0x43, 0x44, 0x00, 0x1c };
-
+  static uint8_t cmd_play_next_track[] = { 0x26, 0x42, 0x0f, 0x43, 0x44, 0x00, 0x1c };
   if (pClient->isConnected() && pRemoteCharacteristicCmd != nullptr) {
     pRemoteCharacteristicCmd->writeValue(cmd_play_next_track, sizeof(cmd_play_next_track));
     delay(100);
@@ -882,7 +867,7 @@ void droid_play_next_track() {
 }
 
 void droid_set_volume() {
-  uint8_t cmd_set_volume[] = { 0x27, 0x42, 0x0f, 0x44, 0x44, 0x00, 0x0e, 0x1f };
+  static uint8_t cmd_set_volume[] = { 0x27, 0x42, 0x0f, 0x44, 0x44, 0x00, 0x0e, 0x1f };
 
   if (pClient->isConnected() && pRemoteCharacteristicCmd != nullptr) {
     cmd_set_volume[7] = (uint8_t)((float)droid_volume / 3.2); // where's the 3.2 come from? 
@@ -917,6 +902,7 @@ void ble_scan() {
   pBLEScan->clearResults();
 }
 
+// todo: deprecate this function
 void tft_println_center(const char* msg) {
   tft.setCursor((tft.width() / 2) - (tft.textWidth(msg) / 2), tft.getCursorY());
   tft.println(msg);
@@ -936,8 +922,6 @@ void display_list(const char **items, uint8_t num_items) {
   uint8_t  row_padding, rows, i, selected;
   int8_t   max_padding;
 
-  // reset_screen();
-
   // set menu font size
   tft.setTextSize(list_options.text_size);
 
@@ -953,8 +937,6 @@ void display_list(const char **items, uint8_t num_items) {
   } else if (max_padding < row_padding) {
     row_padding = max_padding;
   }
-  Serial.print("row_padding = ");
-  Serial.println(row_padding);
 
   // calculate how tall each row will be
   row_height = tft.fontHeight() + (row_padding * 2);
@@ -968,18 +950,10 @@ void display_list(const char **items, uint8_t num_items) {
     if (tft.textWidth(items[i]) > row_width) {
       row_width = tft.textWidth(items[i]);
     }
-
-    Serial.print("item: ");
-    Serial.println(items[i]);
-    Serial.print("width: ");
-    Serial.println(tft.textWidth(items[i]));
-    Serial.println();
   }
   
   // add some horizontal padding to the box based on row padding
   row_width += (row_padding * 4);
-  Serial.print("row_width = ");
-  Serial.println(row_width);
 
   // datum tells tft.drawString() where to draw the string relative to the passed x,y values
   // TC = top, center; this helps center the string without having to calculate the position myself
@@ -1060,7 +1034,7 @@ void display_captioned_menu(const char* caption, menu_item_t* menu_items, uint8_
   h = tft.fontHeight() + (MENU_SELECT_TEXT_PADDING * 2);
   tft.setViewport(0, h, tft.width(), tft.height()-h);
 
-  // sent display options for the menu
+  // set display options for the menu
   list_options.text_size = MENU_SELECT_TEXT_SIZE;
   list_options.text_color = MENU_SELECT_TEXT_COLOR;
   list_options.selected_text_color = MENU_SELECT_SELECTED_TEXT_COLOR;
@@ -1097,7 +1071,7 @@ void display_beacon_menu(const char* caption, beacon_item_t* menu_items, uint8_t
   h = tft.fontHeight() + (BEACON_SELECT_TEXT_PADDING * 2);
   tft.setViewport(0, h, tft.width(), tft.height()-h);
 
-  // sent display options for the menu
+  // set display options for the menu
   list_options.text_size = BEACON_SELECT_TEXT_SIZE;
   list_options.text_color = BEACON_SELECT_TEXT_COLOR;
   list_options.selected_text_color = BEACON_SELECT_SELECTED_TEXT_COLOR;
@@ -1355,7 +1329,7 @@ void display_volume() {
   tft_println_center("SET VOLUME");
 }
 
-/* --- DEPRECATED_FOR_NOW BEGIN ---
+/* --- SAVE_FOR_LATER BEGIN ---
 void display_beacon_settings() {
   char msg[MSG_LEN_MAX];
   uint16_t y = DEFAULT_TEXT_PADDING;
@@ -1456,7 +1430,7 @@ void display_beacon_settings() {
   }
   tft.drawString(msg, tft.width()/2,  y);
 }
-// --- DEPRECATED_FOR_NOW END --- */
+// --- SAVE_FOR_LATER END --- */
 
 void update_display() {
   uint16_t y;
@@ -1518,43 +1492,41 @@ void update_display() {
       display_scanner_results();
       break;
 
-    case SCANNER_SCANNING:            // display_scanning()
+    case SCANNER_SCANNING:       // display_scanning()
       tft.setTextDatum(MC_DATUM);
       tft.setTextSize(ACTION_TEXT_SIZE);
       tft.setTextColor(ACTION_TEXT_COLOR);
       tft.drawString(msg_scanner_active, tft.width()/2, tft.height()/2);
       break;
 
-    case BEACON_ACTIVATE:             // display_beacon_control()
+    case BEACON_ACTIVATE:        // display_beacon_control()
     case BEACON_ACTIVE:
       display_beacon_control();
       break;
 
-    case BEACON_DROID_LIST:           // display_droid_beacon_list()
+    case BEACON_DROID_LIST:      // display_droid_beacon_list()
       display_beacon_menu(msg_select_beacon, droid_beacons, sizeof(droid_beacons) / sizeof(beacon_item_t));
       break;
 
-    case BEACON_LOCATION_LIST:        // display_location_beacon_list()
+    case BEACON_LOCATION_LIST:   // display_location_beacon_list()
       display_beacon_menu(msg_select_beacon, location_beacons, sizeof(location_beacons) / sizeof(beacon_item_t));
       break;
 
-    case BEACON_TYPE_MENU:            // display_beacon_type_menu()
+    case BEACON_TYPE_MENU:       // display_beacon_type_menu()
       display_captioned_menu(msg_select_beacon_type, beacon_type_menu, sizeof(beacon_type_menu) / sizeof(menu_item_t));
       break;
 
-    case TOP_MENU:                    // display_top_menu()
+    case TOP_MENU:               // display_top_menu()
       display_captioned_menu(msg_select, top_menu, sizeof(top_menu) / sizeof(menu_item_t));
       break;
 
-    case SPLASH:                      // display_splash()
+    case SPLASH:                 // display_splash()
       display_splash();
       break;
   }
 
   tft_update = false;
 }
-
-
 
 void button1(button_press_t press_type);  // trying to use an enum as a parameter triggers a bug in arduino. adding an explicit prototype resolves the issue.
 void button1(button_press_t press_type) {
@@ -1577,7 +1549,12 @@ void button1(button_press_t press_type) {
 
     case BEACON_TYPE_MENU:
       state = beacon_type_menu[selected_item].state;
-      selected_item = 0;
+      if (state == BEACON_RANDOM) {
+        set_random_beacon();
+        state = BEACON_ACTIVATE;
+      } else {
+        selected_item = 0;
+      }
       tft_update = true;
       break;
 
