@@ -13,6 +13,12 @@
  *
  *
  *  TODO
+ *  - move state to some kind of struct ?
+ *  - create some kind of sub-state variable where we will store numbers
+ *  - menus will become arrays of strings only, and substate will become an index into that array of strings
+ *
+ *
+ *
  *  - create system where current state has some associated global variable that we can increment to differentiate between sub-states? 
  *
  *  - create a diplay_menu() version that takes an index and an array of strings and displays the array of strings and highlights whatever is specified by index?
@@ -179,31 +185,33 @@
 
 #define MSG_VERSION "v0.57.ALPHA"
 
-#define PLAIN_TEXT_SIZE                   2                   // a generic size used throughout 
-#define PLAIN_TEXT_COLOR                  TFT_DARKGREY        // e.g. 'turn off your droid remote'
-#define PLAIN_TEXT_PADDING                10
+#define DEFAULT_TEXT_SIZE                 2                   // a generic size used throughout 
+#define DEFAULT_TEXT_COLOR                TFT_DARKGREY        // e.g. 'turn off your droid remote'
+#define DEFAULT_TEXT_PADDING              10
+#define DEFAULT_SELECTED_TEXT_COLOR       TFT_WHITE
+#define DEFAULT_SELECTED_BORDER_COLOR     TFT_YELLOW
 
-#define SPLASH_TEXT_SIZE                  PLAIN_TEXT_SIZE     // title is SPLASH_TEXT_SIZE+1 size, all other text is SPLASH_TEXT_SIZE
+#define SPLASH_TEXT_SIZE                  DEFAULT_TEXT_SIZE     // title is SPLASH_TEXT_SIZE+1 size, all other text is SPLASH_TEXT_SIZE
 #define SPLASH_TITLE_COLOR                TFT_RED
 #define SPLASH_SUBTITLE_COLOR             TFT_ORANGE
 #define SPLASH_TEXT_COLOR                 TFT_LIGHTGREY
 #define SPLASH_VERSION_COLOR              C565(64,64,64)      // TFT_VERYDARKGREY
 
-#define MENU_SELECT_TEXT_PADDING          PLAIN_TEXT_PADDING
-#define MENU_SELECT_CAPTION_TEXT_SIZE     PLAIN_TEXT_SIZE
+#define MENU_SELECT_TEXT_PADDING          DEFAULT_TEXT_PADDING
+#define MENU_SELECT_CAPTION_TEXT_SIZE     DEFAULT_TEXT_SIZE
 #define MENU_SELECT_CAPTION_TEXT_COLOR    TFT_WHITE
-#define MENU_SELECT_TEXT_SIZE             (PLAIN_TEXT_SIZE*2)
+#define MENU_SELECT_TEXT_SIZE             (DEFAULT_TEXT_SIZE*2)
 #define MENU_SELECT_TEXT_COLOR            C565(0,64,0)
 #define MENU_SELECT_SELECTED_TEXT_COLOR   TFT_GREEN
 #define MENU_SELECT_SELECTED_BORDER_COLOR TFT_BLUE
 
-#define ACTION_TEXT_SIZE                  (PLAIN_TEXT_SIZE*2)
+#define ACTION_TEXT_SIZE                  (DEFAULT_TEXT_SIZE*2)
 #define ACTION_TEXT_COLOR                 TFT_ORANGE          // e.g. 'CONNECTING'
 #define ACTION_RESULT_OK_TEXT_COLOR       TFT_GREEN           // e.g. 'CONNECTED'
 #define ACTION_RESULT_NG_TEXT_COLOR       TFT_RED             // e.g. 'CONNECT FAILED'
 
-#define DROID_REPORT_TEXT_SIZE            PLAIN_TEXT_SIZE     // personality text size is +1, otherwise this value is used throughout the screen
-#define DROID_REPORT_COLOR                PLAIN_TEXT_COLOR
+#define DROID_REPORT_TEXT_SIZE            DEFAULT_TEXT_SIZE     // personality text size is +1, otherwise this value is used throughout the screen
+#define DROID_REPORT_COLOR                DEFAULT_TEXT_COLOR
 #define DROID_REPORT_PERSONALITY_COLOR    TFT_RED
 #define DROID_REPORT_AFFILIATION_COLOR    TFT_GREEN
 #define DROID_REPORT_ADDRESS_COLOR        TFT_BLUE
@@ -224,6 +232,8 @@ const char msg_email[]                  = "ruthsarian@gmail.com";
 const char msg_continue1[]              = "press any button";
 const char msg_continue2[]              = "to continue...";
 const char msg_select[]                 = "select an option";
+const char msg_select_beacon_type[]     = "select beacon type";
+const char msg_select_beacon[]          = "select a beacon";
 const char msg_beacon[]                 = "BEACON";
 const char msg_beacon_off[]             = "OFF";
 const char msg_beacon_on[]              = "ON";
@@ -241,7 +251,6 @@ const char msg_no_droids2[]             = "In Area";
 const char msg_unknown_int[]            = "Unknown (%d)";
 const char msg_rssi[]                   = "rssi: %ddBm";
 const char msg_d_of_d[]                 = "%d of %d";
-const char msg_select_beacon_type[]     = "select beacon type";
 const char msg_sounds[]                 = "SOUNDS";
 const char msg_volume[]                 = "VOLUME";
 const char msg_random[]                 = "RANDOM";
@@ -324,11 +333,11 @@ const char* msg_locations[] = {
 #define WAKEUP_BUTTON     GPIO_NUM_0  // wake up when button 1 is pressed _ONLY_IF_ it's been enabled in setup(); otherwise the reset button will wake up the TTGO
 #define WAKEUP_LEVEL      LOW         // wake up from sleep when the button is pressed (LOW)
 
-uint32_t last_activity;
-
 const BLEUUID serviceUUID("09b600a0-3e42-41fc-b474-e9c0c8f0c801");
 const BLEUUID cmdUUID("09b600b1-3e42-41fc-b474-e9c0c8f0c801");
 const BLEUUID notifyUUID("09b600b0-3e42-41fc-b474-e9c0c8f0c801");  // not used, but keeping it for future reference
+
+uint32_t last_activity;
 
 BLEScan* pBLEScan = nullptr;
 BLEClient* pClient = nullptr;
@@ -393,93 +402,46 @@ typedef enum {
   LONG_PRESS
 } button_press_t;
 
-/*
- * Menu/State Hierarchy
- * 
- * SPLASH 
- *  MODE_SCANNER_SELECTED
- *    MODE_SCANNER_SCANNING
- *      MODE_SCANNER_RESULTS
- *        MODE_SCANNER_CONNECTING
- *          MODE_SCANNER_CONNECTED
- *            MODE_SOUND_SELECTED
- *              MODE_SOUND_GROUP
- *              MODE_SOUND_TRACK
- *              MODE_SOUND_PLAY
- *                MODE_SOUND_PLAYING
- *            MODE_VOLUME_SELECTED
- *              MODE_VOLUME_UP
- *              MODE_VOLUME_DOWN
- *              MODE_VOLUME_TEST
- *                MODE_SOUND_TESTING
- *          MODE_SCANNER_CONNECT_FAILED
- *  MODE_BEACON_SELECTED
- *    MODE_BEACON_DROID
- *    MODE_BEACON_LOCATION
- *    MODE_BEACON_RANDOM
- *      MODE_BEACON_EDIT_PARAM1
- *      MODE_BEACON_EDIT_PARAM2
- *      MODE_BEACON_EDIT_PARAM3
- *    MODE_BEACON_OFF
- *    MODE_BEACON_ON
- *    
-
-
-// TODO: look at firmware, what does last byte of location beacon data do????
-         also confirm multiply by 5 to get interval in seconds on 3rd to last byte in data
-
-// rssi: 0x80 = 0dBm, above 0x80 is negative dBm
-
-A6 = -38      166
-BA = -58      186
-9C = -28
-80 =   0
-  
-select beacon type
-  droid
-  location
-  random
-
-render beacon parameter screen based on value in droid struct
-if 'random', start at activate beacon option in parameter screen
-
-beacon ON/OFF at top? or bottom? change color or dim colors when beacon is on??
-
- */
 
 typedef enum {
-  SPLASH,
+  SPLASH,                         // splash screen
 
-  MODE_SCANNER_SELECTED,
-  MODE_SCANNER_SCANNING,
-  MODE_SCANNER_RESULTS,
-  MODE_SCANNER_CONNECTING,
-  MODE_SCANNER_CONNECTED,
-  MODE_SCANNER_CONNECT_FAILED,
+  TOP_MENU,                       // top menu; 
 
-  MODE_SOUND_SELECTED,
-  MODE_SOUND_GROUP,
-  MODE_SOUND_TRACK,
-  MODE_SOUND_PLAY,
-  MODE_SOUND_PLAYING,
+  BEACON_TYPE_MENU,               // display the types of beacons to pick from
+  BEACON_DROID_LIST,              // display a list of droid beacons to pick from
+  BEACON_LOCATION_LIST,           // display a list of location beacons to pick from
+  BEACON_ACTIVATE,                // display the option to activate the beacon
+  BEACON_ACTIVE,                  // display the currently active beacon
 
-  MODE_VOLUME_SELECTED,
-  MODE_VOLUME_UP,
-  MODE_VOLUME_DOWN,
-  MODE_VOLUME_TEST,
-  MODE_VOLUME_TESTING,
+  SCANNER_SCANNING,
+  SCANNER_RESULTS,
+  SCANNER_CONNECTING,
+  SCANNER_CONNECTED,
+  SCANNER_CONNECT_FAILED,
 
-  MODE_BEACON_SELECTED,
-  MODE_BEACON_RANDOM,
-  MODE_BEACON_LOCATION,
-  MODE_BEACON_DROID,
-  MODE_BEACON_EDIT_PARAM1,
-  MODE_BEACON_EDIT_PARAM2,
-  MODE_BEACON_EDIT_PARAM3,
-  MODE_BEACON_ACTIVATE,
-  MODE_BEACON_ACTIVE,
-  MODE_BEACON_OFF,
-  MODE_BEACON_ON
+  SOUND_SELECTED,
+  SOUND_GROUP,
+  SOUND_TRACK,
+  SOUND_PLAY,
+  SOUND_PLAYING,
+
+  VOLUME_SELECTED,
+  VOLUME_UP,
+  VOLUME_DOWN,
+  VOLUME_TEST,
+  VOLUME_TESTING,
+
+  // --DEPRECATED BEGIN--
+  SCANNER_SELECTED,
+  BEACON_SELECTED,
+  BEACON_RANDOM,
+  BEACON_LOCATION,
+  BEACON_DROID,
+  BEACON_EDIT_PARAM1,
+  BEACON_EDIT_PARAM2,
+  BEACON_EDIT_PARAM3,
+  // --DEPRECATED END--
 } system_state_t;
 
 typedef struct {
@@ -488,28 +450,62 @@ typedef struct {
 } menu_item_t;
 
 menu_item_t top_menu[] = {
-  { MODE_SCANNER_SELECTED, msg_scanner },
-  { MODE_BEACON_SELECTED, msg_beacon }
-};
-
-menu_item_t connected_menu[] = {
-  { MODE_SOUND_SELECTED, msg_sounds },
-  { MODE_VOLUME_SELECTED, msg_volume }
+  { SCANNER_SCANNING, msg_scanner },
+  { BEACON_TYPE_MENU, msg_beacon  }
 };
 
 menu_item_t beacon_type_menu[] = {
-  { MODE_BEACON_RANDOM, msg_random },
-  { MODE_BEACON_LOCATION, msg_location },
-  { MODE_BEACON_DROID, msg_droid }
+  { BEACON_LOCATION_LIST, msg_location },
+  { BEACON_DROID_LIST,    msg_droid    }
 };
 
-system_state_t state = SPLASH;
 
-TFT_eSPI tft = TFT_eSPI();  // display interface
-bool tft_update = true;     // flag to inidcate display needs to be updated
 
-uint8_t selected_item = 0;
- int8_t droid_volume = 100; // there is no way to 'read' the current volume setting, so we'll keep track with a variable
+
+
+
+
+
+
+
+
+
+
+menu_item_t connected_menu[] = {
+  { SOUND_SELECTED, msg_sounds },
+  { VOLUME_SELECTED, msg_volume }
+};
+
+
+TFT_eSPI tft = TFT_eSPI();      // display interface
+bool tft_update = true;         // flag to inidcate display needs to be updated
+
+typedef struct {                // information for rendering lists; could probably define multiple list styles rather than a single global variable
+  uint8_t  text_size;
+  uint16_t text_color;
+  uint8_t  text_padding;
+  uint16_t selected_text_color;
+  uint16_t selected_border_color;
+} tft_list_options_t;
+tft_list_options_t list_options;
+
+int8_t droid_volume = 100;      // there is no way to 'read' the current volume setting, so we'll keep track with a variable and assume it starts at full (100) volume
+
+uint8_t selected_item = 0;    // keep track of the currently selected option when displaying menus, options, etc.
+
+system_state_t state = SPLASH;  // track the current state of the toolbox
+
+
+
+
+
+
+
+
+
+
+
+
 
 void init_advertisement_data() {
   if (pAdvertisementData != nullptr) {
@@ -527,72 +523,86 @@ void load_payload_droid_beacon_data() {
   memcpy(payload, SWGE_DROID_BEACON_PAYLOAD, sizeof(uint8_t) * PAYLOAD_SIZE);
 }
 
+// populate beacon struct with a droid beacon
+void set_droid_beacon(uint8_t personality) {
+
+  beacon.type = DROID;
+  Serial.println("Creating a DROID beacon.");
+
+  // make sure the personality chip ID passed is a valid one
+  if (personality > 0 && personality <= (sizeof(msg_droid_personalities) / sizeof(char*))) {
+    beacon.setting[0] = personality;
+
+  // otherwise generate a random beacon
+  } else {
+    beacon.setting[0] = (esp_random() % ((sizeof(msg_droid_personalities) / sizeof(char*)) - 1)) + 1;
+  }
+  Serial.print("  Personality: ");
+  Serial.println(msg_droid_personalities[beacon.setting[0]]);
+
+  // set affiliation based on personality
+  Serial.print("  Affiliation: ");
+  switch(beacon.setting[0]) {
+
+    // resistance
+    case 3:
+    case 6:
+    case 10:
+    case 11:
+    case 12:
+    case 14:
+      beacon.setting[1] = 5;
+      Serial.println("Resistance");
+      break;
+
+    // first order
+    case 5:
+    case 8:
+      beacon.setting[1] = 9;
+      Serial.println("First Order");
+      break;
+
+    // scoundrel
+    default:
+      beacon.setting[1] = 1;
+      Serial.println("Scoundrel");
+      break;
+  }
+}
+
+void set_location_beacon(uint8_t location) {
+  beacon.type = LOCATION;
+  Serial.println("Creating a LOCATION beacon.");
+
+  // set location
+  if (location > 0 && location <= (sizeof(msg_locations) / sizeof(char*))) {
+    beacon.setting[0] = location;
+  } else {
+    beacon.setting[0] = (esp_random() % ((sizeof(msg_locations) / sizeof(char*)) - 1)) + 1;
+  }
+  Serial.print("  Location: ");
+  Serial.println(msg_locations[beacon.setting[0]]);
+
+  // set reaction interval (in minutes), could go as high as 19, but keeping it low on purpose
+  //beacon.setting[1] = (esp_random() % 3) + 1;
+  beacon.setting[1] = 2;
+  Serial.print("  Interval: ");
+  Serial.println(beacon.setting[1]);
+
+  // set minimum RSSI for droid to react; while this value is stored as an unsigned value, think of it as a negative value in dBm; e.g. 38 = -38dBm
+  beacon.setting[2] = 38;
+  Serial.print("  Minimum RSSI: -");
+  Serial.print(beacon.setting[2]);
+  Serial.println("dBm");
+}
+
 // populate the global beacon variable with random(ish) values
 void set_random_beacon() {
-
-  Serial.println("Generating a random beacon:");
-
-  // create a DROID beacon
+  Serial.println("Generating a random beacon.");
   if (esp_random() % 2)  {
-
-    beacon.type = DROID;
-    Serial.println("  Type: DROID");
-
-    // set personality chip
-    beacon.setting[0] = (esp_random() % ((sizeof(msg_droid_personalities) / sizeof(char*)) - 1)) + 1;
-    Serial.print("  Personality: ");
-    Serial.println(msg_droid_personalities[beacon.setting[0]]);
-
-    // set affiliation based on personality chip
-    Serial.print("  Affiliation: ");
-    switch(beacon.setting[0]) {
-
-      // resistance
-      case 3:
-      case 6:
-      case 10:
-      case 11:
-      case 12:
-      case 14:
-        beacon.setting[1] = 5;
-        Serial.println("Resistance");
-        break;
-
-      // first order
-      case 5:
-      case 8:
-        beacon.setting[1] = 9;
-        Serial.println("First Order");
-        break;
-
-      // scoundrel
-      default:
-        beacon.setting[1] = 1;
-        Serial.println("Scoundrel");
-        break;
-    }
-
-  // create a LOCATION beacon
+    set_droid_beacon(0);      // create a DROID beacon
   } else {
-    beacon.type = LOCATION;
-    Serial.println("  Type: LOCATION");
-
-    // set location
-    //beacon.setting[0] = (esp_random() % 7) + 1;
-    beacon.setting[0] = (esp_random() % ((sizeof(msg_locations) / sizeof(char*)) - 1)) + 1;
-    Serial.print("  Location: ");
-    Serial.println(msg_locations[beacon.setting[0]]);
-
-    // set reaction interval (in minutes), could go as high as 19, but keeping it low on purpose
-    beacon.setting[1] = (esp_random() % 3) + 1;
-    Serial.print("  Interval: ");
-    Serial.println(beacon.setting[1]);
-
-    // set minimum RSSI for droid to react; while this value is stored as an unsigned value, think of it as a negative value in dBm; e.g. 38 = -38dBm
-    beacon.setting[2] = 38;
-    Serial.print("  Minimum RSSI: -");
-    Serial.print(beacon.setting[2]);
-    Serial.println("dBm");
+    set_location_beacon(0);   // create a LOCATION beacon
   }
 }
 
@@ -884,10 +894,128 @@ void reset_screen(void) {
   tft.setCursor(0, 0);
 }
 
-void display_captioned_menu (const char* caption, menu_item_t* items, uint8_t num_items) {
-  uint8_t h;
 
-  reset_screen(); // necessary? we call this from update_display already...
+
+
+
+
+void display_list(const char **items, uint8_t num_items) {
+  int16_t  y = 0;
+  int16_t  w = 0;
+  uint16_t row_height, row_width;
+  uint8_t  row_padding, rows, i, selected;
+  int8_t   max_padding;
+
+  // reset_screen();
+
+  // set menu font size
+  tft.setTextSize(list_options.text_size);
+
+  // calculate row padding
+  row_padding = list_options.text_padding;
+
+  // since font size can be changed via a define, or that this code might run on a screen
+  // that i haven't tested with, check to make sure padding isn't so big that we can't show 
+  // at least 2 menu items on the screen.
+  max_padding = (tft.getViewportHeight() - (tft.fontHeight() * 2) - 4)/6;
+  if (max_padding < 1) {
+    row_padding = 0;
+  } else if (max_padding < row_padding) {
+    row_padding = max_padding;
+  }
+  Serial.print("row_padding = ");
+  Serial.println(row_padding);
+
+  // calculate how tall each row will be
+  row_height = tft.fontHeight() + (row_padding * 2);
+
+  // calculate how many rows will fit within the screen
+  rows = tft.getViewportHeight() / row_height;
+
+  // find the widest menu item and use that to determine the width of the box for the selected item
+  row_width = 0;
+  for (i = 0; i < num_items; i++) {
+    if (tft.textWidth(items[i]) > row_width) {
+      row_width = tft.textWidth(items[i]);
+    }
+
+    Serial.print("item: ");
+    Serial.println(items[i]);
+    Serial.print("width: ");
+    Serial.println(tft.textWidth(items[i]));
+    Serial.println();
+  }
+  
+  // add some horizontal padding to the box based on row padding
+  row_width += (row_padding * 4);
+  Serial.print("row_width = ");
+  Serial.println(row_width);
+
+  // datum tells tft.drawString() where to draw the string relative to the passed x,y values
+  // TC = top, center; this helps center the string without having to calculate the position myself
+  tft.setTextDatum(TC_DATUM);
+
+  // LIST RENDERING METHODOLOGY:
+  //   to give a sense of moving through a menu that's taller than the screen, i want the selected item to be
+  //   in a position on the screen relative to its location in the list. so the first item is rendered at the top,
+  //   the last item is rendered at the bottom, and intervening items render somewhere in the middle
+  //
+  //   i tested several different approaches and i found this "feels" right given the limited screen space
+
+  // is the list larger than the screen?
+  if (num_items > rows && rows >= 1)  {
+
+    // where should the selected item appear on screen?
+    y = ((tft.getViewportHeight() - row_height) / (num_items - 1)) * selected_item;
+
+    // where should the list start on (or off) screen in order to put the selected item at the 
+    // previously calculated location?
+    y -= (row_height * selected_item);
+
+  } /* else {
+    // do we want to vertically center the list if it's smaller than the screen?
+    // if not, leave this space blank and commented out
+
+  } */
+
+  // draw the list, starting at the previously calculated position (y)
+  for (i = 0; i < num_items; i++) {
+
+    // is the current list item selected?
+    if (i == selected_item) {
+
+      // draw a box around the list item
+      tft.drawRect(
+        (tft.getViewportWidth() / 2) - (row_width / 2),
+        y,
+        row_width,
+        row_height,
+        list_options.selected_border_color
+      );
+
+      // set the text color for selected list items
+      tft.setTextColor(list_options.selected_text_color);
+    } else {
+
+      // this item is not selected, set its text color to the normal color
+      tft.setTextColor(list_options.text_color);
+    }
+
+    // draw the list item on the screen
+    tft.drawString(items[i], tft.getViewportWidth()/2, y + row_padding);
+
+    // increment y for the next list item
+    y += row_height;
+  }
+}
+
+
+void display_captioned_menu(const char* caption, menu_item_t* menu_items, uint8_t num_items) {
+  uint8_t h, i;
+
+  const char** list_items;
+
+  //reset_screen(); // necessary? we call this from update_display already...
 
   // set size, color, and datum
   tft.setTextSize(MENU_SELECT_CAPTION_TEXT_SIZE);
@@ -901,9 +1029,61 @@ void display_captioned_menu (const char* caption, menu_item_t* items, uint8_t nu
   h = tft.fontHeight() + (MENU_SELECT_TEXT_PADDING * 2);
   tft.setViewport(0, h, tft.width(), tft.height()-h);
 
+  // sent display options for the menu
+  list_options.text_size = MENU_SELECT_TEXT_SIZE;
+  list_options.text_color = MENU_SELECT_TEXT_COLOR;
+  list_options.selected_text_color = MENU_SELECT_SELECTED_TEXT_COLOR;
+  list_options.selected_border_color = MENU_SELECT_SELECTED_BORDER_COLOR;
+  list_options.text_padding = MENU_SELECT_TEXT_PADDING;
+
+  // i feel a little dirty about using malloc like this; maybe i should just declare a fixed array and assign as necessary???
+  list_items = (const char**)malloc(sizeof(char*)*num_items);
+  for(i=0;i<num_items;i++) {
+    list_items[i] = menu_items[i].text;
+  }
+
   // display the menu
-  display_menu(items, num_items);
+  display_list(list_items, num_items);
+
+  // remove all traces of my evildoing
+  free(list_items);
 }
+
+void display_captioned_list(const char* caption, const char** list_items, uint8_t num_items) {
+  uint8_t h, i;
+
+  //reset_screen(); // necessary? we call this from update_display already...
+
+  // set size, color, and datum
+  tft.setTextSize(MENU_SELECT_CAPTION_TEXT_SIZE);
+  tft.setTextColor(MENU_SELECT_CAPTION_TEXT_COLOR);
+  tft.setTextDatum(TC_DATUM);
+
+  // draw menu caption
+  tft.drawString(caption, tft.width()/2, MENU_SELECT_TEXT_PADDING);
+
+  // calculate viewport dimensions for subsequent menu
+  h = tft.fontHeight() + (MENU_SELECT_TEXT_PADDING * 2);
+  tft.setViewport(0, h, tft.width(), tft.height()-h);
+
+  // sent display options for the menu
+  list_options.text_size = MENU_SELECT_TEXT_SIZE;
+  list_options.text_color = MENU_SELECT_TEXT_COLOR;
+  list_options.selected_text_color = MENU_SELECT_SELECTED_TEXT_COLOR;
+  list_options.selected_border_color = MENU_SELECT_SELECTED_BORDER_COLOR;
+  list_options.text_padding = MENU_SELECT_TEXT_PADDING;
+
+  // display the menu
+  display_list(list_items, num_items);
+}
+
+
+
+
+
+
+
+/************************** OBSOLETE BEGIN ********************/
 
 // display a simple menu that highlights the currently selected item
 void display_menu(menu_item_t* items, uint8_t num_items) {
@@ -978,6 +1158,57 @@ void display_menu(menu_item_t* items, uint8_t num_items) {
     y += row_height;
   }
 }
+
+void display_captioned_menu_OLD(const char* caption, menu_item_t* items, uint8_t num_items) {
+  uint8_t h;
+
+  reset_screen(); // necessary? we call this from update_display already...
+
+  // set size, color, and datum
+  tft.setTextSize(MENU_SELECT_CAPTION_TEXT_SIZE);
+  tft.setTextColor(MENU_SELECT_CAPTION_TEXT_COLOR);
+  tft.setTextDatum(TC_DATUM);
+
+  // draw menu caption
+  tft.drawString(caption, tft.width()/2, MENU_SELECT_TEXT_PADDING);
+
+  // calculate viewport dimensions for subsequent menu
+  h = tft.fontHeight() + (MENU_SELECT_TEXT_PADDING * 2);
+  tft.setViewport(0, h, tft.width(), tft.height()-h);
+
+  // display the menu
+  display_menu(items, num_items);
+}
+
+
+
+/************************** OBSOLETE END ********************/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // display the splash screen seen when the program starts
 void display_splash() {
@@ -1102,19 +1333,19 @@ void display_track_select() {
   tft.setCursor(hgap, tft.getCursorY() + vgap - 2);
   tft.setTextColor(TFT_BLUE);
   tft.print("Group: ");
-  tft.setTextColor((state == MODE_SOUND_GROUP) ? TFT_GREEN : TFT_DARKGREY);
+  tft.setTextColor((state == SOUND_GROUP) ? TFT_GREEN : TFT_DARKGREY);
   snprintf(msg, MSG_LEN_MAX, "%d", (current_group + 1));
   tft.println(msg);
 
   tft.setCursor(hgap, tft.getCursorY() + 5);
   tft.setTextColor(TFT_RED);
   tft.print("Track: ");
-  tft.setTextColor((state == MODE_SOUND_TRACK) ? TFT_GREEN : TFT_DARKGREY);
+  tft.setTextColor((state == SOUND_TRACK) ? TFT_GREEN : TFT_DARKGREY);
   snprintf(msg, MSG_LEN_MAX, "%d", (current_track + 1));
   tft.println(msg);
 
   tft.setCursor(0, tft.getCursorY() + vgap);
-  tft.setTextColor((state == MODE_SOUND_PLAY) ? TFT_GREEN : TFT_DARKGREY);
+  tft.setTextColor((state == SOUND_PLAY) ? TFT_GREEN : TFT_DARKGREY);
   tft_println_center("PLAY");
 }
 
@@ -1155,27 +1386,27 @@ void display_volume() {
   hgap = (tft.width() - (tft.textWidth(msg) * 2)) / 3;
   tft.setCursor(hgap, tft.getCursorY());
 
-  tft.setTextColor((state == MODE_VOLUME_UP ? TFT_GREEN : TFT_DARKGREY));
+  tft.setTextColor((state == VOLUME_UP ? TFT_GREEN : TFT_DARKGREY));
   tft.print(msg);
   tft.setCursor(tft.getCursorX() + hgap, tft.getCursorY());
 
-  tft.setTextColor((state == MODE_VOLUME_DOWN ? TFT_GREEN : TFT_DARKGREY));
+  tft.setTextColor((state == VOLUME_DOWN ? TFT_GREEN : TFT_DARKGREY));
   snprintf(msg, MSG_LEN_MAX, "VOL-");
   tft.println(msg);
   tft.setCursor(tft.getCursorX(), tft.getCursorY() + (vgap * 0.3));
 
-  tft.setTextColor((state == MODE_VOLUME_TEST ? TFT_GREEN : TFT_DARKGREY));
+  tft.setTextColor((state == VOLUME_TEST ? TFT_GREEN : TFT_DARKGREY));
   tft_println_center("SET VOLUME");
 }
 
 void display_beacon_settings() {
   char msg[MSG_LEN_MAX];
-  uint16_t y = PLAIN_TEXT_PADDING;
+  uint16_t y = DEFAULT_TEXT_PADDING;
   uint8_t i;
 
   // display title
-  tft.setTextSize(PLAIN_TEXT_SIZE);
-  tft.setTextColor(PLAIN_TEXT_COLOR);
+  tft.setTextSize(DEFAULT_TEXT_SIZE);
+  tft.setTextColor(DEFAULT_TEXT_COLOR);
   tft.setTextDatum(TC_DATUM);
   if (beacon.type == DROID) {
     snprintf(msg, MSG_LEN_MAX, "%s %s", msg_droid, msg_beacon_settings);
@@ -1183,7 +1414,7 @@ void display_beacon_settings() {
     snprintf(msg, MSG_LEN_MAX, "%s %s", msg_location, msg_beacon_settings);
   }
   tft.drawString(msg, tft.width()/2, y);
-  y = tft.fontHeight() + (PLAIN_TEXT_PADDING*2);
+  y = tft.fontHeight() + (DEFAULT_TEXT_PADDING*2);
 
   // loop over each setting
   for (i=0; i<NUM_BEACON_PARAMS; i++) {
@@ -1192,12 +1423,12 @@ void display_beacon_settings() {
     tft.setTextDatum(TR_DATUM);
     tft.setTextColor(SETTING_NAME_COLOR);
     snprintf(msg, MSG_LEN_MAX, "%s:", (beacon.type == DROID ? msg_beacon_droid_param[i] : msg_beacon_location_param[i]));
-    tft.drawString(msg, ((tft.width()/2) - PLAIN_TEXT_PADDING), y);
+    tft.drawString(msg, ((tft.width()/2) - DEFAULT_TEXT_PADDING), y);
 
     // set the setting value font color depending on whether or not this particular parameter is selected
-    if ((i == 0 && state == MODE_BEACON_EDIT_PARAM1) ||
-        (i == 1 && state == MODE_BEACON_EDIT_PARAM2) ||
-        (i == 2 && state == MODE_BEACON_EDIT_PARAM3)) 
+    if ((i == 0 && state == BEACON_EDIT_PARAM1) ||
+        (i == 1 && state == BEACON_EDIT_PARAM2) ||
+        (i == 2 && state == BEACON_EDIT_PARAM3)) 
     {
       tft.setTextColor(SETTING_SELECTED_VALUE_COLOR);
     } else {
@@ -1246,18 +1477,18 @@ void display_beacon_settings() {
 
     // display parameter value
     tft.setTextDatum(TL_DATUM);
-    tft.drawString(msg, ((tft.width()/2) + PLAIN_TEXT_PADDING), y);
+    tft.drawString(msg, ((tft.width()/2) + DEFAULT_TEXT_PADDING), y);
 
     // increment y to the next line
-    y += tft.fontHeight() + PLAIN_TEXT_PADDING;
+    y += tft.fontHeight() + DEFAULT_TEXT_PADDING;
   }
 
   // display activate button
-  tft.setTextSize(PLAIN_TEXT_SIZE);
+  tft.setTextSize(DEFAULT_TEXT_SIZE);
   tft.setTextDatum(TC_DATUM);
-  if (state == MODE_BEACON_ACTIVE || state == MODE_BEACON_ACTIVATE ) {
+  if (state == BEACON_ACTIVE || state == BEACON_ACTIVATE ) {
     tft.setTextColor(SETTING_SELECTED_VALUE_COLOR);
-    if (state == MODE_BEACON_ACTIVE) {
+    if (state == BEACON_ACTIVE) {
       snprintf(msg, MSG_LEN_MAX, "%s", msg_beacon_active);
     } else {
       snprintf(msg, MSG_LEN_MAX, "%s", msg_activate_beacon);
@@ -1280,67 +1511,47 @@ void update_display() {
 
   switch (state) {
 
-    case MODE_BEACON_EDIT_PARAM1:     // display_beacon_settings()
-    case MODE_BEACON_EDIT_PARAM2:
-    case MODE_BEACON_EDIT_PARAM3:
-    case MODE_BEACON_ACTIVATE:
-    case MODE_BEACON_ACTIVE:
+    case BEACON_EDIT_PARAM1:     // display_beacon_settings()
+    case BEACON_EDIT_PARAM2:
+    case BEACON_EDIT_PARAM3:
+    case BEACON_ACTIVATE:
+    case BEACON_ACTIVE:
       display_beacon_settings();
       break;
 
-    case MODE_BEACON_RANDOM:          // display_select_beacon_type()
-    case MODE_BEACON_LOCATION:
-    case MODE_BEACON_DROID:
-      display_captioned_menu( msg_select_beacon_type, beacon_type_menu, sizeof(beacon_type_menu) / sizeof(menu_item_t));
+    case BEACON_RANDOM:          // display_select_beacon_type()
+    case BEACON_LOCATION:
+    case BEACON_DROID:
+      display_captioned_menu_OLD( msg_select_beacon_type, beacon_type_menu, sizeof(beacon_type_menu) / sizeof(menu_item_t));
       break;
 
-    case MODE_BEACON_ON:              // display_beacon
-    case MODE_BEACON_OFF:
-      tft.setTextSize(5);
-      tft.setTextColor(TFT_BLUE);
-      y = (tft.height() / 2) - tft.fontHeight() - 5;
-      tft.setCursor((tft.width() / 2) - (tft.textWidth(msg_beacon) / 2), y);
-      tft.print(msg_beacon);
-      y += tft.fontHeight() + 10;
-
-      if (state == MODE_BEACON_ON) {
-        tft.setTextColor(TFT_GREEN);
-        tft.setCursor((tft.width() / 2) - (tft.textWidth(msg_beacon_on) / 2), y);
-        tft.print(msg_beacon_on);
-      } else {
-        tft.setTextColor(TFT_DARKGREEN);
-        tft.setCursor((tft.width() / 2) - (tft.textWidth(msg_beacon_off) / 2), y);
-        tft.print(msg_beacon_off);
-      }
-      break;
-
-    case MODE_VOLUME_UP:              // display_volume()
-    case MODE_VOLUME_DOWN:
-    case MODE_VOLUME_TEST:
-    case MODE_VOLUME_TESTING:
+    case VOLUME_UP:              // display_volume()
+    case VOLUME_DOWN:
+    case VOLUME_TEST:
+    case VOLUME_TESTING:
       display_volume();
       break;
 
-    case MODE_SOUND_GROUP:            // display_track_select()
-    case MODE_SOUND_TRACK:
-    case MODE_SOUND_PLAY:
-    case MODE_SOUND_PLAYING:
+    case SOUND_GROUP:            // display_track_select()
+    case SOUND_TRACK:
+    case SOUND_PLAY:
+    case SOUND_PLAYING:
       display_track_select();
       break;
 
-    case MODE_SOUND_SELECTED:         // display_connected_menu()
-    case MODE_VOLUME_SELECTED:
-      display_captioned_menu(msg_select, connected_menu, sizeof(connected_menu) / sizeof(menu_item_t));
+    case SOUND_SELECTED:         // display_connected_menu()
+    case VOLUME_SELECTED:
+      display_captioned_menu_OLD(msg_select, connected_menu, sizeof(connected_menu) / sizeof(menu_item_t));
       break;
 
-    case MODE_SCANNER_CONNECTED:      // display_connected()
+    case SCANNER_CONNECTED:      // display_connected()
       tft.setTextDatum(MC_DATUM);
       tft.setTextSize(ACTION_TEXT_SIZE);
       tft.setTextColor(ACTION_RESULT_OK_TEXT_COLOR);
       tft.drawString(msg_scanner_connected, tft.width()/2, tft.height()/2);
       break;
 
-    case MODE_SCANNER_CONNECT_FAILED: // display_connect_failed()
+    case SCANNER_CONNECT_FAILED: // display_connect_failed()
       tft.setTextDatum(TC_DATUM);
       tft.setTextSize(ACTION_TEXT_SIZE);
       tft.setTextColor(ACTION_RESULT_NG_TEXT_COLOR);
@@ -1348,10 +1559,10 @@ void update_display() {
       tft.drawString(msg_failed, tft.width()/2, (tft.height()/2));
       break;
 
-    case MODE_SCANNER_CONNECTING:     // display_connecting()
+    case SCANNER_CONNECTING:     // display_connecting()
       tft.setTextDatum(TC_DATUM);
-      tft.setTextSize(PLAIN_TEXT_SIZE);
-      tft.setTextColor(PLAIN_TEXT_COLOR);
+      tft.setTextSize(DEFAULT_TEXT_SIZE);
+      tft.setTextColor(DEFAULT_TEXT_COLOR);
       tft.drawString(msg_turn_off_remote1, tft.width()/2, 0);
       tft.drawString(msg_turn_off_remote2, tft.width()/2, tft.fontHeight());
       tft.setTextDatum(MC_DATUM);
@@ -1360,19 +1571,31 @@ void update_display() {
       tft.drawString(msg_scanner_connecting, tft.width()/2, tft.height()/2);
       break;
 
-    case MODE_SCANNER_RESULTS:        // display_scanner_results()
+    case SCANNER_RESULTS:        // display_scanner_results()
       display_scanner_results();
       break;
 
-    case MODE_SCANNER_SCANNING:       // display_scanning()
+    case SCANNER_SCANNING:       // display_scanning()
       tft.setTextDatum(MC_DATUM);
       tft.setTextSize(ACTION_TEXT_SIZE);
       tft.setTextColor(ACTION_TEXT_COLOR);
       tft.drawString(msg_scanner_active, tft.width()/2, tft.height()/2);
       break;
 
-    case MODE_SCANNER_SELECTED:       // display_top_menu()
-    case MODE_BEACON_SELECTED:
+
+    case BEACON_LOCATION_LIST:        // display_location_beacon_list()
+      display_captioned_list(msg_select_beacon, msg_locations, sizeof(msg_locations) / sizeof(char*));
+      break;
+
+    case BEACON_DROID_LIST:           // display_droid_beacon_list()
+      display_captioned_list(msg_select_beacon, msg_droid_personalities, sizeof(msg_droid_personalities) / sizeof(char*));
+      break;
+
+    case BEACON_TYPE_MENU:            // display_beacon_type_menu()
+      display_captioned_menu(msg_select_beacon_type, beacon_type_menu, sizeof(beacon_type_menu) / sizeof(menu_item_t));
+      break;
+
+    case TOP_MENU:                    // display_top_menu()
       display_captioned_menu(msg_select, top_menu, sizeof(top_menu) / sizeof(menu_item_t));
       break;
 
@@ -1384,6 +1607,8 @@ void update_display() {
   tft_update = false;
 }
 
+
+
 void button1(button_press_t press_type);  // trying to use an enum as a parameter triggers a bug in arduino. adding an explicit prototype resolves the issue.
 void button1(button_press_t press_type) {
 
@@ -1392,66 +1617,100 @@ void button1(button_press_t press_type) {
 
   switch (state) {
     case SPLASH:
-      state = MODE_SCANNER_SELECTED;
+      state = TOP_MENU;
+      selected_item = 0;
       tft_update = true;
       break;
 
-    case MODE_SCANNER_SELECTED:
-      state = MODE_SCANNER_SCANNING;
+    case TOP_MENU:
+      state = top_menu[selected_item].state;
+      selected_item = 0;
       tft_update = true;
       break;
 
-    case MODE_SCANNER_RESULTS:
+    case BEACON_TYPE_MENU:
+      state = beacon_type_menu[selected_item].state;
+      if (selected_item == 0) {
+        selected_item = 1;      // i hate hard-coding values like this; it should be a define or a variable somewhere; ugh....
+                                // a define which is then used in an array of structs so i can refer to the define here
+      } else {
+        selected_item = 0;
+      }
+      tft_update = true;
+      break;
+
+    case BEACON_LOCATION_LIST:
+      set_location_beacon(selected_item);
+      state = BEACON_ACTIVATE;
+      tft_update = true;
+      break;
+
+    case BEACON_DROID_LIST:
+      set_droid_beacon(selected_item);
+      state = BEACON_ACTIVATE;
+      tft_update = true;
+      break;
+
+
+
+
+
+
+
+
+
+
+    case SCANNER_RESULTS:
       if (droid_count > 0) {
         if (press_type == LONG_PRESS) {
-          state = MODE_SCANNER_CONNECTING;
+          state = SCANNER_CONNECTING;
           tft_update = true;
         } else if (droid_count > 1) {
           current_droid = (current_droid + 1) % droid_count;
           tft_update = true;
         }
       } else {
-        state = MODE_SCANNER_SCANNING;
+        state = SCANNER_SCANNING;
         tft_update = true;
       }
       break;
 
-    case MODE_SOUND_SELECTED:
-      state = MODE_SOUND_GROUP;
+    case SOUND_SELECTED:
+      state = SOUND_GROUP;
       tft_update = true;
       break;
 
-    case MODE_SOUND_GROUP:
+    case SOUND_GROUP:
       if (press_type == SHORT_PRESS) {
         current_group = (current_group + 1) % 12;
         current_track = 0;
       } else {
-        state = MODE_SOUND_TRACK;
+        state = SOUND_TRACK;
       }
       tft_update = true;
       break;
 
-    case MODE_SOUND_TRACK:
+    case SOUND_TRACK:
       if (press_type == SHORT_PRESS) {
         current_track = (current_track + 1) % 99;
       } else {
-        state = MODE_SOUND_PLAY;
+        state = SOUND_PLAY;
       }
       tft_update = true;
       break;
 
-    case MODE_SOUND_PLAY:
+    case SOUND_PLAY:
       Serial.println("Play selected!");
-      state = MODE_SOUND_PLAYING;
+      state = SOUND_PLAYING;
       tft_update = true;
       break;
 
-    case MODE_VOLUME_SELECTED:
-      state = MODE_VOLUME_UP;
+    case VOLUME_SELECTED:
+      state = VOLUME_UP;
       tft_update = true;
       break;
 
-    case MODE_VOLUME_UP:
+    case VOLUME_UP:
       if (droid_volume > 90) {
         droid_volume = 100;
       } else {
@@ -1460,7 +1719,7 @@ void button1(button_press_t press_type) {
       tft_update = true;
       break;
 
-    case MODE_VOLUME_DOWN:
+    case VOLUME_DOWN:
       if (droid_volume < 10) {
         droid_volume = 0;
       } else {
@@ -1469,54 +1728,48 @@ void button1(button_press_t press_type) {
       tft_update = true;
       break;
 
-    case MODE_VOLUME_TEST:
-      state = MODE_VOLUME_TESTING;
+    case VOLUME_TEST:
+      state = VOLUME_TESTING;
       tft_update = true;
       break;
 
-    case MODE_BEACON_SELECTED:
-      // pAdvertising->stop();
-      state = MODE_BEACON_RANDOM;
-      tft_update = true;
-      break;
-
-    case MODE_BEACON_RANDOM:
+    case BEACON_RANDOM:
       set_random_beacon();
-      state = MODE_BEACON_ACTIVATE;
+      state = BEACON_ACTIVATE;
       tft_update = true;
       break;
 
-    case MODE_BEACON_DROID:
-    case MODE_BEACON_LOCATION:
-      if (state == MODE_BEACON_DROID) {
+    case BEACON_DROID:
+    case BEACON_LOCATION:
+      if (state == BEACON_DROID) {
         beacon.type = DROID;
       } else {
         beacon.type = LOCATION;
       }
-      state = MODE_BEACON_EDIT_PARAM1;
+      state = BEACON_EDIT_PARAM1;
       tft_update = true;
       break;
 
-    case MODE_BEACON_EDIT_PARAM1:
+    case BEACON_EDIT_PARAM1:
       break;
 
-    case MODE_BEACON_EDIT_PARAM2:
+    case BEACON_EDIT_PARAM2:
       break;
 
-    case MODE_BEACON_EDIT_PARAM3:
+    case BEACON_EDIT_PARAM3:
       break;
 
-    case MODE_BEACON_ACTIVATE:
+    case BEACON_ACTIVATE:
       init_advertisement_data();
       set_payload_from_beacon();
       pAdvertising->start();
-      state = MODE_BEACON_ACTIVE;
+      state = BEACON_ACTIVE;
       tft_update = true;
       break;
 
-    case MODE_BEACON_ACTIVE:
+    case BEACON_ACTIVE:
       pAdvertising->stop();
-      state = MODE_BEACON_ACTIVATE;
+      state = BEACON_ACTIVATE;
       tft_update = true;
       break;
   }
@@ -1531,76 +1784,124 @@ void button2(button_press_t press_type) {
   // do button 2 stuff
   switch (state) {
     case SPLASH:
-      state = MODE_SCANNER_SELECTED;
+      state = TOP_MENU;
+      selected_item = 0;
       tft_update = true;
       break;
 
-    case MODE_SCANNER_SELECTED:
-    case MODE_BEACON_SELECTED:
-       if (press_type == LONG_PRESS) {
+    case TOP_MENU:
+      if (press_type == LONG_PRESS) {
         state = SPLASH;
-      } else if (state == MODE_BEACON_SELECTED) {
-        state = MODE_SCANNER_SELECTED;
+        selected_item = 0;
       } else {
-        state = MODE_BEACON_SELECTED;
-      }
-      tft_update = true;
-      break;
-
-    case MODE_BEACON_RANDOM:
-    case MODE_BEACON_LOCATION:
-    case MODE_BEACON_DROID:
-      if (press_type == LONG_PRESS) {
-        state = MODE_BEACON_SELECTED;
-      } else {
-        if (state == MODE_BEACON_RANDOM) {
-          state = MODE_BEACON_LOCATION;
-        } else if (state == MODE_BEACON_LOCATION) {
-          state = MODE_BEACON_DROID;
-        } else {
-          state = MODE_BEACON_RANDOM;
+        selected_item++;
+        if (selected_item >= sizeof(top_menu) / sizeof(menu_item_t)) {
+          selected_item = 0;
         }
       }
       tft_update = true;
       break;
 
-    case MODE_BEACON_EDIT_PARAM1:
-    case MODE_BEACON_EDIT_PARAM2:
-    case MODE_BEACON_EDIT_PARAM3:
-    case MODE_BEACON_ACTIVATE:
+    case BEACON_TYPE_MENU:
       if (press_type == LONG_PRESS) {
-        state = MODE_BEACON_RANDOM;
+        state = TOP_MENU;
+        selected_item = 0;
       } else {
-        if (state == MODE_BEACON_EDIT_PARAM1) {
-          state = MODE_BEACON_EDIT_PARAM2;
-        } else if (state == MODE_BEACON_EDIT_PARAM2) {
+        selected_item++;
+        if (selected_item >= sizeof(beacon_type_menu) / sizeof(menu_item_t)) {
+          selected_item = 0;
+        }
+      }
+      tft_update = true;
+      break;
+
+    case BEACON_LOCATION_LIST:
+      if (press_type == LONG_PRESS) {
+        state = BEACON_TYPE_MENU;
+        selected_item = 0;
+      } else {
+        selected_item++;
+        if (selected_item >= sizeof(msg_locations) / sizeof(char*)) {
+          selected_item = 1;
+        }
+      }
+      tft_update = true;
+      break;
+
+    case BEACON_DROID_LIST:
+      if (press_type == LONG_PRESS) {
+        state = BEACON_TYPE_MENU;
+        selected_item = 1;
+      } else {
+        selected_item++;
+        if (selected_item >= sizeof(msg_droid_personalities) / sizeof(char*)) {
+          selected_item = 1;
+        }
+      }
+      tft_update = true;
+      break;
+
+
+
+
+
+
+
+
+    case BEACON_RANDOM:
+    case BEACON_LOCATION:
+    case BEACON_DROID:
+      if (press_type == LONG_PRESS) {
+        state = BEACON_SELECTED;
+      } else {
+        if (state == BEACON_RANDOM) {
+          state = BEACON_LOCATION;
+        } else if (state == BEACON_LOCATION) {
+          state = BEACON_DROID;
+        } else {
+          state = BEACON_RANDOM;
+        }
+      }
+      tft_update = true;
+      break;
+
+    case BEACON_EDIT_PARAM1:
+    case BEACON_EDIT_PARAM2:
+    case BEACON_EDIT_PARAM3:
+    case BEACON_ACTIVATE:
+      if (press_type == LONG_PRESS) {
+        state = BEACON_RANDOM;
+      } else {
+        if (state == BEACON_EDIT_PARAM1) {
+          state = BEACON_EDIT_PARAM2;
+        } else if (state == BEACON_EDIT_PARAM2) {
           if (beacon.type == LOCATION) {
-            state = MODE_BEACON_EDIT_PARAM3;
+            state = BEACON_EDIT_PARAM3;
           } else {
-            state = MODE_BEACON_ACTIVATE;
+            state = BEACON_ACTIVATE;
           }
-        } else if (state == MODE_BEACON_EDIT_PARAM3) {
-          state = MODE_BEACON_ACTIVATE;
+        } else if (state == BEACON_EDIT_PARAM3) {
+          state = BEACON_ACTIVATE;
         } else {
-          state = MODE_BEACON_EDIT_PARAM1;
+          state = BEACON_EDIT_PARAM1;
         }
       }
       tft_update = true;
       break;
 
-    case MODE_BEACON_ACTIVE:
+    case BEACON_ACTIVE:
       pAdvertising->stop();
       if (press_type == LONG_PRESS) {
-        state = MODE_BEACON_RANDOM;
+        state = BEACON_RANDOM;
       } else {
-        state = MODE_BEACON_ACTIVATE;
+        state = BEACON_ACTIVATE;
       }
       tft_update = true;
       break;
 
-    case MODE_SCANNER_RESULTS:
+    case SCANNER_RESULTS:
       if (press_type == LONG_PRESS || droid_count < 1) {
-        state = MODE_SCANNER_SELECTED;
+        state = SCANNER_SELECTED;
         tft_update = true;
       } else {
         if (droid_count > 1) {
@@ -1614,62 +1915,62 @@ void button2(button_press_t press_type) {
       }
       break;
 
-    case MODE_SOUND_SELECTED:
-    case MODE_VOLUME_SELECTED:
+    case SOUND_SELECTED:
+    case VOLUME_SELECTED:
       if (press_type == SHORT_PRESS) {
         switch (state) {
-          case MODE_SOUND_SELECTED:
-            state = MODE_VOLUME_SELECTED;
+          case SOUND_SELECTED:
+            state = VOLUME_SELECTED;
             break;
           default:
-            state = MODE_SOUND_SELECTED;
+            state = SOUND_SELECTED;
             break;
         }
       } else {
         droid_disconnect();
-        state = MODE_SCANNER_RESULTS;
+        state = SCANNER_RESULTS;
       }
       tft_update = true;
       break;
 
-    case MODE_SOUND_GROUP:
-    case MODE_SOUND_TRACK:
-    case MODE_SOUND_PLAY:
+    case SOUND_GROUP:
+    case SOUND_TRACK:
+    case SOUND_PLAY:
       if (press_type == SHORT_PRESS) {
         switch (state) {
-          case MODE_SOUND_GROUP:
-            state = MODE_SOUND_TRACK;
+          case SOUND_GROUP:
+            state = SOUND_TRACK;
             break;
-          case MODE_SOUND_TRACK:
-            state = MODE_SOUND_PLAY;
+          case SOUND_TRACK:
+            state = SOUND_PLAY;
             break;
-          case MODE_SOUND_PLAY:
-            state = MODE_SOUND_GROUP;
+          case SOUND_PLAY:
+            state = SOUND_GROUP;
             break;
         }
       } else {
-        state = MODE_SOUND_SELECTED;
+        state = SOUND_SELECTED;
       }
       tft_update = true;
       break;
 
-    case MODE_VOLUME_UP:
-    case MODE_VOLUME_DOWN:
-    case MODE_VOLUME_TEST:
+    case VOLUME_UP:
+    case VOLUME_DOWN:
+    case VOLUME_TEST:
       if (press_type == SHORT_PRESS) {
         switch(state) {
-          case MODE_VOLUME_UP:
-            state = MODE_VOLUME_DOWN;
+          case VOLUME_UP:
+            state = VOLUME_DOWN;
             break;
-          case MODE_VOLUME_DOWN:
-            state = MODE_VOLUME_TEST;
+          case VOLUME_DOWN:
+            state = VOLUME_TEST;
             break;
-          case MODE_VOLUME_TEST:
-            state = MODE_VOLUME_UP;
+          case VOLUME_TEST:
+            state = VOLUME_UP;
             break;
         }
       } else {
-        state = MODE_VOLUME_SELECTED;
+        state = VOLUME_SELECTED;
       }
     tft_update = true;
     break;
@@ -1719,11 +2020,11 @@ void button_handler() {
 void setup() {
   uint8_t i;
 
-// T-Display-S3 needs this in order to run off battery
-#ifdef TDISPLAYS3
-  pinMode(15, OUTPUT);
-  digitalWrite(15, HIGH);
-#endif
+  // T-Display-S3 needs this in order to run off battery
+  #ifdef TDISPLAYS3
+    pinMode(15, OUTPUT);
+    digitalWrite(15, HIGH);
+  #endif
 
   // setup display
   tft.init();
@@ -1751,10 +2052,6 @@ void setup() {
   pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->setScanResponseData(oScanResponseData);
 
-  // setup beacon payload
-  //init_advertisement_data();
-  //set_payload_location_beacon(esp_random());
-
   // define deep sleep wakeup trigger; if commented out ESP32 goes into hibernation instead of deep sleep and only wakes up with the reset button
   // memory is lost from deep sleep; for our purposes deep sleep and hibernation are the same thing
   //esp_sleep_enable_ext0_wakeup(WAKEUP_BUTTON, WAKEUP_LEVEL);
@@ -1778,53 +2075,53 @@ void loop() {
 
   switch (state) {
 
-    case MODE_SCANNER_SCANNING:
+    case SCANNER_SCANNING:
       update_display();
       ble_scan();
       current_droid = 0;
-      state = MODE_SCANNER_RESULTS;
+      state = SCANNER_RESULTS;
       tft_update = true;
       break;
 
-    case MODE_SCANNER_CONNECTING:
+    case SCANNER_CONNECTING:
       update_display();
       if (droid_connect()) {
-        state = MODE_SCANNER_CONNECTED;
+        state = SCANNER_CONNECTED;
       } else {
-        state = MODE_SCANNER_CONNECT_FAILED;
+        state = SCANNER_CONNECT_FAILED;
       }
       tft_update = true;
       break;
 
-    case MODE_SCANNER_CONNECTED:
+    case SCANNER_CONNECTED:
       delay(2000);
-      state = MODE_SOUND_SELECTED;
+      state = SOUND_SELECTED;
       tft_update = true;
       break;
 
-    case MODE_SCANNER_CONNECT_FAILED:
+    case SCANNER_CONNECT_FAILED:
       delay(2000);
-      state = MODE_SCANNER_RESULTS;
+      state = SCANNER_RESULTS;
       tft_update = true;
       break;
 
-    case MODE_SOUND_PLAYING:
+    case SOUND_PLAYING:
       update_display();
       Serial.println("Playing sound...");
       droid_play_track();
       delay(2000);
-      state = MODE_SOUND_PLAY;
+      state = SOUND_PLAY;
       tft_update = true;
       break;
 
-    case MODE_VOLUME_TESTING:
+    case VOLUME_TESTING:
       update_display();
       Serial.println("Testing volume...");
       droid_set_volume();
       droid_play_track();
       //droid_play_next_track();
       delay(2000);
-      state = MODE_VOLUME_TEST;
+      state = VOLUME_TEST;
       tft_update = true;
       break;
   }
@@ -1836,7 +2133,7 @@ void loop() {
   if (millis() - last_activity > SLEEP_AFTER) {
 
     // do not go to sleep if the beacon is active
-    if (state != MODE_BEACON_ON) {
+    if (state != BEACON_ACTIVE) {
       Serial.println("Going to sleep.");
       delay(100);
       esp_deep_sleep_start();
