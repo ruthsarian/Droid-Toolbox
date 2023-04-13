@@ -215,8 +215,8 @@
 
 #define BEACON_CONTROL_TEXT_SIZE            DEFAULT_TEXT_SIZE + 1
 #define BEACON_CONTROL_TEXT_PADDING         DEFAULT_TEXT_PADDING
-#define BEACON_CONTROL_TYPE_COLOR           TFT_ORANGE
-#define BEACON_CONTROL_ID_COLOR             TFT_PURPLE
+#define BEACON_CONTROL_TYPE_COLOR           TFT_BLUE
+#define BEACON_CONTROL_ID_COLOR             TFT_RED
 #define BEACON_CONTROL_ACTIVE_COLOR         TFT_YELLOW
 #define BEACON_CONTROL_INACTIVE_COLOR       TFT_BROWN
 
@@ -272,8 +272,8 @@ const char msg_random[]                 = "RANDOM";
 const char msg_droid[]                  = "DROID";
 const char msg_location[]               = "LOCATION";
 const char msg_beacon_settings[]        = "BEACON SETTINGS";
-const char msg_activate_beacon[]        = "ACTIVATE BEACON";
-const char msg_beacon_active[]          = "BEACON IS ACTIVE";
+const char msg_activate_beacon[]        = "beacon inactive";
+const char msg_beacon_active[]          = "BEACON ACTIVE";
 
 const char* msg_beacon_droid_param[NUM_BEACON_PARAMS] = {
   "PERSONALITY",
@@ -446,44 +446,32 @@ typedef enum {
 
 
 typedef enum {
-  SPLASH,                         // splash screen
+  SPLASH,                 // splash screen
+  TOP_MENU,               // top menu; beacon or scanner
 
-  TOP_MENU,                       // top menu; 
-
-  BEACON_TYPE_MENU,               // display the types of beacons to pick from
-  BEACON_DROID_LIST,              // display a list of droid beacons to pick from
-  BEACON_LOCATION_LIST,           // display a list of location beacons to pick from
-  BEACON_ACTIVATE,                // display the option to activate the beacon
-  BEACON_ACTIVE,                  // display the currently active beacon
+  BEACON_TYPE_MENU,       // display the types of beacons to pick from
+  BEACON_DROID_LIST,      // display a list of droid beacons to pick from
+  BEACON_LOCATION_LIST,   // display a list of location beacons to pick from
+  BEACON_ACTIVATE,        // display the option to activate the beacon
+  BEACON_ACTIVE,          // display the currently active beacon
 
   SCANNER_SCANNING,
   SCANNER_RESULTS,
   SCANNER_CONNECTING,
   SCANNER_CONNECTED,
-  SCANNER_CONNECT_FAILED,
+  SCANNER_CONNECT_FAILED, 
 
-  SOUND_SELECTED,
+  CONNECTED_MENU,         // options available after connecting to a droid; volume or sounds
+
   SOUND_GROUP,
   SOUND_TRACK,
   SOUND_PLAY,
   SOUND_PLAYING,
 
-  VOLUME_SELECTED,
   VOLUME_UP,
   VOLUME_DOWN,
   VOLUME_TEST,
   VOLUME_TESTING,
-
-  // --DEPRECATED BEGIN--
-  SCANNER_SELECTED,
-  BEACON_SELECTED,
-  BEACON_RANDOM,
-  BEACON_LOCATION,
-  BEACON_DROID,
-  BEACON_EDIT_PARAM1,
-  BEACON_EDIT_PARAM2,
-  BEACON_EDIT_PARAM3,
-  // --DEPRECATED END--
 } system_state_t;
 
 typedef struct {
@@ -502,8 +490,8 @@ menu_item_t beacon_type_menu[] = {
 };
 
 menu_item_t connected_menu[] = {
-  { SOUND_SELECTED, msg_sounds },
-  { VOLUME_SELECTED, msg_volume }
+  { SOUND_GROUP, msg_sounds },
+  { VOLUME_UP, msg_volume }
 };
 
 typedef struct {
@@ -1014,11 +1002,10 @@ void display_list(const char **items, uint8_t num_items) {
     // previously calculated location?
     y -= (row_height * selected_item);
 
-  } /* else {
-    // do we want to vertically center the list if it's smaller than the screen?
-    // if not, leave this space blank and commented out
-
-  } */
+  // entire list will fit on the screen, vertically center it
+  } else {
+    y = (tft.getViewportHeight() - (row_height * num_items))/2;
+  }
 
   // draw the list, starting at the previously calculated position (y)
   for (i = 0; i < num_items; i++) {
@@ -1136,13 +1123,14 @@ void display_beacon_control() {
 
   // line 1: beacon type
   // line 2: beacon id
+  // line 3: gap
   // line 3: beacon state
 
   tft.setTextDatum(TC_DATUM);
   tft.setTextSize(BEACON_CONTROL_TEXT_SIZE);
 
   // calculate where to begin drawing text  
-  y = (tft.getViewportHeight() - ((tft.fontHeight() * 3) + (BEACON_CONTROL_TEXT_PADDING * 2)))/2;
+  y = (tft.getViewportHeight() - ((tft.fontHeight() * 4) + (BEACON_CONTROL_TEXT_PADDING * 3)))/2;
   
   // display beacon type
   if (beacon.type == DROID) {
@@ -1166,7 +1154,7 @@ void display_beacon_control() {
   tft.drawString(msg, tft.getViewportWidth()/2, y);
 
   // adjust position for next line
-  y += tft.fontHeight() + BEACON_CONTROL_TEXT_PADDING;
+  y += (tft.fontHeight() + BEACON_CONTROL_TEXT_PADDING)*2;
 
   // display beacon state
   if (state == BEACON_ACTIVE) {
@@ -1177,144 +1165,6 @@ void display_beacon_control() {
     tft.drawString(msg_activate_beacon, tft.getViewportWidth()/2, y);
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-/************************** OBSOLETE BEGIN ********************/
-
-// display a simple menu that highlights the currently selected item
-void display_menu(menu_item_t* items, uint8_t num_items) {
-  int16_t y = 0;
-  int16_t w = 0;
-  uint8_t row_padding, rows, row_height, row_width, i, selected;
-  int8_t max_padding;
-
-  // reset_screen();
-
-  // set menu font size
-  tft.setTextSize(MENU_SELECT_TEXT_SIZE);
-
-  row_padding = MENU_SELECT_TEXT_PADDING + 1;  // +1 for the border
-
-  // since font size can be changed via a define, or that this code might run on a screen
-  // that i haven't tested with, check to make sure padding isn't so big that we can't show 
-  // at least 2 menu items on the screen.
-  max_padding = (tft.getViewportHeight() - (tft.fontHeight() * 2) - 4)/6;
-  if (max_padding < 1) {
-    row_padding = 0;
-  } else if (max_padding < row_padding) {
-    row_padding = max_padding;
-  }
-
-  row_height = tft.fontHeight() + (row_padding * 2);
-  rows = tft.getViewportHeight() / row_height;  // how many rows in the menu can fit on a single screen?
-
-  // find the widest menu item and use that to determine the width of the box for the selected item
-  row_width = 0;
-  for (i = 0; i < num_items; i++) {
-    if (tft.textWidth(items[i].text) > row_width) {
-      row_width = tft.textWidth(items[i].text);
-    }
-  }
-  row_width += (row_padding * 4);
-
-  // OFFSET METHOD 4: menu starts at top, realign so current selected is inside viewport, but at a position relative to it's position in the menu
-  //if (num_items > rows)  {
-  if (num_items > rows && rows >= 1)  {
-    for (selected = 0; selected < num_items; selected++) {
-      if (state == items[selected].state) {
-        break;
-      }
-    }
-    y = ((tft.getViewportHeight() - row_height) / (num_items - 1)) * selected;
-    y -= (row_height * selected);
-  }
-  // } OFFSET MEHOD 4
-
-
-  tft.setTextDatum(TC_DATUM);
-
-  // draw the menu
-  for (i = 0; i < num_items; i++) {
-
-    // set the text color based on whether or not the current item is selected
-    // also draw a box around the selected item
-    if (state == items[i].state) {
-      tft.drawRect(
-        (tft.getViewportWidth() / 2) - (row_width / 2),
-        y,
-        row_width,
-        row_height,
-        MENU_SELECT_SELECTED_BORDER_COLOR
-      );
-      tft.setTextColor(MENU_SELECT_SELECTED_TEXT_COLOR);
-    } else {
-      tft.setTextColor(MENU_SELECT_TEXT_COLOR);
-    }
-    tft.drawString(items[i].text, tft.getViewportWidth()/2, y + row_padding);
-    y += row_height;
-  }
-}
-
-void display_captioned_menu_OLD(const char* caption, menu_item_t* items, uint8_t num_items) {
-  uint8_t h;
-
-  reset_screen(); // necessary? we call this from update_display already...
-
-  // set size, color, and datum
-  tft.setTextSize(MENU_SELECT_CAPTION_TEXT_SIZE);
-  tft.setTextColor(MENU_SELECT_CAPTION_TEXT_COLOR);
-  tft.setTextDatum(TC_DATUM);
-
-  // draw menu caption
-  tft.drawString(caption, tft.width()/2, MENU_SELECT_TEXT_PADDING);
-
-  // calculate viewport dimensions for subsequent menu
-  h = tft.fontHeight() + (MENU_SELECT_TEXT_PADDING * 2);
-  tft.setViewport(0, h, tft.width(), tft.height()-h);
-
-  // display the menu
-  display_menu(items, num_items);
-}
-
-
-
-/************************** OBSOLETE END ********************/
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // display the splash screen seen when the program starts
 void display_splash() {
@@ -1633,9 +1483,8 @@ void update_display() {
       display_track_select();
       break;
 
-    case SOUND_SELECTED:         // display_connected_menu()
-    case VOLUME_SELECTED:
-      display_captioned_menu_OLD(msg_select, connected_menu, sizeof(connected_menu) / sizeof(menu_item_t));
+    case CONNECTED_MENU:         // display_connected_menu()
+      display_captioned_menu(msg_select, connected_menu, sizeof(connected_menu) / sizeof(menu_item_t));
       break;
 
     case SCANNER_CONNECTED:      // display_connected()
@@ -1669,14 +1518,12 @@ void update_display() {
       display_scanner_results();
       break;
 
-    case SCANNER_SCANNING:       // display_scanning()
+    case SCANNER_SCANNING:            // display_scanning()
       tft.setTextDatum(MC_DATUM);
       tft.setTextSize(ACTION_TEXT_SIZE);
       tft.setTextColor(ACTION_TEXT_COLOR);
       tft.drawString(msg_scanner_active, tft.width()/2, tft.height()/2);
       break;
-
-
 
     case BEACON_ACTIVATE:             // display_beacon_control()
     case BEACON_ACTIVE:
@@ -1760,15 +1607,6 @@ void button1(button_press_t press_type) {
       tft_update = true;
       break;
 
-
-
-
-
-
-
-
-
-
     case SCANNER_RESULTS:
       if (droid_count > 0) {
         if (press_type == LONG_PRESS) {
@@ -1784,8 +1622,8 @@ void button1(button_press_t press_type) {
       }
       break;
 
-    case SOUND_SELECTED:
-      state = SOUND_GROUP;
+    case CONNECTED_MENU:
+      state = connected_menu[selected_item].state;
       tft_update = true;
       break;
 
@@ -1811,11 +1649,6 @@ void button1(button_press_t press_type) {
     case SOUND_PLAY:
       Serial.println("Play selected!");
       state = SOUND_PLAYING;
-      tft_update = true;
-      break;
-
-    case VOLUME_SELECTED:
-      state = VOLUME_UP;
       tft_update = true;
       break;
 
@@ -1933,14 +1766,6 @@ void button2(button_press_t press_type) {
       } 
       break;
 
-
-
-
-
-
-
-
-
     case SCANNER_RESULTS:
       if (press_type == LONG_PRESS || droid_count < 1) {
         state = TOP_MENU;
@@ -1958,16 +1783,11 @@ void button2(button_press_t press_type) {
       }
       break;
 
-    case SOUND_SELECTED:
-    case VOLUME_SELECTED:
+    case CONNECTED_MENU:
       if (press_type == SHORT_PRESS) {
-        switch (state) {
-          case SOUND_SELECTED:
-            state = VOLUME_SELECTED;
-            break;
-          default:
-            state = SOUND_SELECTED;
-            break;
+        selected_item++;
+        if (selected_item >= sizeof(connected_menu) / sizeof(menu_item_t)) {
+          selected_item = 0;
         }
       } else {
         droid_disconnect();
@@ -1992,7 +1812,8 @@ void button2(button_press_t press_type) {
             break;
         }
       } else {
-        state = SOUND_SELECTED;
+        state = CONNECTED_MENU;
+        selected_item = 0;          // todo: don't hardcode this
       }
       tft_update = true;
       break;
@@ -2013,7 +1834,8 @@ void button2(button_press_t press_type) {
             break;
         }
       } else {
-        state = VOLUME_SELECTED;
+        state = CONNECTED_MENU;
+        selected_item = 1;          // todo: don't hardcode this
       }
     tft_update = true;
     break;
@@ -2138,7 +1960,7 @@ void loop() {
 
     case SCANNER_CONNECTED:
       delay(2000);
-      state = SOUND_SELECTED;
+      state = CONNECTED_MENU;
       tft_update = true;
       break;
 
