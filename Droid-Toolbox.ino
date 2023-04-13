@@ -1,4 +1,3 @@
-#include <Arduino.h>
 /* Droid Toolbox v0.57.ALPHA : ruthsarian@gmail.com
  *
  *
