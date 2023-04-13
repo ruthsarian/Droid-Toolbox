@@ -1,14 +1,10 @@
-/* Droid Toolbox v0.57.ALPHA : ruthsarian@gmail.com
+/* Droid Toolbox v0.60.ALPHA : ruthsarian@gmail.com
  *
  *
- * v0.57 TODO:
+ * v0.60 TODO:
  *  - finish moving all colors into the #define section at top of code
- *  - look at box drawn around selected menu item; is it a little vertically off-center???
- *  - create system where current state has some associated global variable that we can increment to differentiate between sub-states? 
- *  - EXPERT beacon mode
- *  - remember previous beacon type selection so we can go back to it in the menu
- *    e.g. some kind of "previous_state" variable
- *
+ *  - clean up/remove old formatting stuff
+ * 
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * NOTE: your droid remote MUST BE OFF for this to work!
@@ -117,13 +113,14 @@
  *   internationalization/localization; 
  *     put all static strings into a location (an array, a bunch of #defines) that allows for easier
  *     translation to other languages without having to sift through all the code
+ *   consider a method for setting font sizes based on screen size
  *
  * HISTORY
  *   v0.57 : added ability to select which beacon the droid toolbox will produce
+ *           expert beacon mode allows finer control over the beacon; i probably should have hidden it behind a key combination...
  *           added global beacon variable to store the details of the beacon that will be produced
- *           lots of work on the underlying menu system and helper functions; still not pretty enough for my tastes
- *           added global variable to track currently selected item in a menu, rather than have a STATE for each menu option as adding a state for
- *             each droid and location beacon would have been... a bit much.
+ *           lots of work on the underlying menu system and helper functions
+ *           added global variable to track currently selected item in a menu, rather than have a STATE for each menu option
  *           moving more control of the display options (text color, size, etc) to the block of #defines at the top of the code
  *   v0.56 : added a caption to select menus; this puts back functionality present in earlier versions that i just prefer
  *           short button 2 press on scan results now goes back 1 droid (if droids are found) instead of returning to main menu; long button 2 press will return to main menu
@@ -141,20 +138,20 @@
  *   v0.52 : Fixed typo "CH1-10P" => "C1-10P"
  *   v0.51 : Put BLE notifications back into the code. Any notifications received are displayed in the serial monitor.
  *           Added note to connecting string so people see the droid remote needs to be off before connecting
- *   v0.5  : Added ability to connect to droid from scan results using a long-press of button 1
+ *   v0.50 : Added ability to connect to droid from scan results using a long-press of button 1
  *           Droid plays activation sound upon connection
  *           Group and track can be selected and played through the droid.
- *   v0.4  : Added deep sleep/hibernation
+ *   v0.40 : Added deep sleep/hibernation
  *           Added initial ability to connect to droid with long button 1 press while viewing droid in scan results
  *            Connection is currently a demo; connect, tell droid to play a sound, then disconnect. 
  *            Will improve upon this in the next version.
- *   v0.3  : Long/Short button press detection
+ *   v0.30 : Long/Short button press detection
  *           Droid report is paged; shows 1 droid at a time
  *           Droid report sorts droids by RSSI value
  *           Added version to splash screen
- *   v0.2  : Added back button from both beacon and scanner.
+ *   v0.20 : Added back button from both beacon and scanner.
  *           Location beacon location is randomly selected.
- *   v0.1  : Initial Release
+ *   v0.10 : Initial Release
  */
 
 #include <TFT_eSPI.h>
@@ -170,7 +167,7 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.57.ALPHA"           // the version displayed on the splash screen at the lower right
+#define MSG_VERSION                         "v0.60.ALPHA"           // the version displayed on the splash screen at the lower right
 
 #define DEFAULT_TEXT_SIZE                   2                       // a generic size used throughout 
 #define DEFAULT_TEXT_COLOR                  TFT_DARKGREY            // e.g. 'turn off your droid remote'
@@ -207,6 +204,12 @@
 #define BEACON_CONTROL_ID_COLOR             TFT_RED
 #define BEACON_CONTROL_ACTIVE_COLOR         TFT_YELLOW
 #define BEACON_CONTROL_INACTIVE_COLOR       TFT_BROWN
+
+#define BEACON_EXPERT_TEXT_SIZE             DEFAULT_TEXT_SIZE
+#define BEACON_EXPERT_TEXT_PADDING          DEFAULT_TEXT_PADDING
+#define BEACON_EXPERT_LABEL_COLOR           DEFAULT_TEXT_COLOR
+#define BEACON_EXPERT_VALUE_COLOR           TFT_BROWN
+#define BEACON_EXPERT_VALUE_SELECTED_COLOR  TFT_YELLOW
 
 #define ACTION_TEXT_SIZE                    (DEFAULT_TEXT_SIZE*2)
 #define ACTION_TEXT_COLOR                   TFT_ORANGE            // e.g. 'CONNECTING'
@@ -262,6 +265,11 @@ const char msg_location[]               = "LOCATION";
 const char msg_beacon_settings[]        = "BEACON SETTINGS";
 const char msg_activate_beacon[]        = "inactive";
 const char msg_beacon_active[]          = "ACTIVE";
+const char msg_expert[]                 = "EXPERT";
+const char msg_yes[]                    = "YES";
+const char msg_no[]                     = "NO";
+const char msg_type[]                   = "TYPE";
+const char msg_state[]                  = "STATE";
 
 // the index of a personality name in this array should correspond to that personality's ID
 // not following this will result in the wrong names being displayed
@@ -302,15 +310,15 @@ const char* msg_droid_affiliation[] = {
   "First Order"   // 0x09
 };
 
+// next two arrays are labels for the expert beacon screen
 const char* msg_beacon_droid_param[NUM_BEACON_PARAMS] = {
-  "PERSONALITY",
-  "AFFILIATION",
-  ""
+  "CHIP",
+  "AFFL",
+  "PAIRED"
 };
-
 const char* msg_beacon_location_param[NUM_BEACON_PARAMS] = {
-  "LOCATION", 
-  "REACT INTERVAL", 
+  "LCTN", 
+  "REACT INT", 
   "MIN RSSI"
 };
 
@@ -422,7 +430,7 @@ typedef struct {
   beacon_type_t type;                 // DROID or LOCATION
   uint8_t setting[NUM_BEACON_PARAMS]; // 0 = droid:personality[1:14],  location:location[1:7]
                                       // 1 = droid:affiliation[1,5,9], location:interval[1:20]
-                                      // 2 =                           location:minimum_rssi[58:28]
+                                      // 2 = droid:paired[0,1],        location:minimum_rssi[58:28]
 } beacon_t;
 beacon_t beacon;
 
@@ -440,6 +448,8 @@ typedef enum {
   BEACON_RANDOM,          // generate a random beacon
   BEACON_ACTIVATE,        // display the option to activate the beacon
   BEACON_ACTIVE,          // display the currently active beacon
+  BEACON_EXPERT,          // display an 'expert mode' beacon control screen
+  BEACON_EXPERT_ACTIVE,   // for when the expert mode beacon is active
 
   SCANNER_SCANNING,
   SCANNER_RESULTS,
@@ -474,6 +484,7 @@ menu_item_t beacon_type_menu[] = {
   { BEACON_LOCATION_LIST, msg_location },
   { BEACON_DROID_LIST,    msg_droid    },
   { BEACON_RANDOM,        msg_random   },
+  { BEACON_EXPERT,        msg_expert   },
 };
 
 menu_item_t connected_menu[] = {
@@ -590,6 +601,9 @@ void set_droid_beacon(uint8_t personality) {
       Serial.println("Scoundrel");
       break;
   }
+
+  // set paired to true
+  beacon.setting[2] = 1;
 }
 
 void set_location_beacon(uint8_t location) {
@@ -634,6 +648,9 @@ void set_payload_from_beacon() {
   // DROID beacon type
   if (beacon.type == DROID) {
     load_payload_droid_beacon_data();
+
+    // set whether or not the droid appears as being paired with a remote
+    payload[5] = 0x01 + (beacon.setting[2] > 0 ? 0x80 : 0x00);
 
     // set affiliation
     payload[6] = 0x80 + (beacon.setting[1] * 2);
@@ -1006,7 +1023,7 @@ void display_list(const char **items, uint8_t num_items) {
     }
 
     // draw the list item on the screen
-    tft.drawString(items[i], tft.getViewportWidth()/2, y + row_padding);
+    tft.drawString(items[i], tft.getViewportWidth()/2, y + row_padding + 1);    // the +1 here is to compensate for the box being slightly veritcally off-center
 
     // increment y for the next list item
     y += row_height;
@@ -1349,108 +1366,144 @@ void display_volume() {
   tft_println_center("SET VOLUME");
 }
 
-/* --- SAVE_FOR_LATER BEGIN ---
-void display_beacon_settings() {
+void display_beacon_expert() {
   char msg[MSG_LEN_MAX];
-  uint16_t y = DEFAULT_TEXT_PADDING;
-  uint8_t i;
+  uint8_t i, j;
 
-  // display title
-  tft.setTextSize(DEFAULT_TEXT_SIZE);
-  tft.setTextColor(DEFAULT_TEXT_COLOR);
-  tft.setTextDatum(TC_DATUM);
-  if (beacon.type == DROID) {
-    snprintf(msg, MSG_LEN_MAX, "%s %s", msg_droid, msg_beacon_settings);
-  } else {
-    snprintf(msg, MSG_LEN_MAX, "%s %s", msg_location, msg_beacon_settings);
+  /*
+  // figure out the widest label so all the labels can be right-aligned; don't need to do this but...
+  uint16_t label_width = 0;
+  tft.setTextSize(BEACON_EXPERT_TEXT_SIZE);
+  for(i=0;i<NUM_BEACON_PARAMS;i++) {
+    if (tft.textWidth(msg_beacon_droid_param[i])>label_width) {
+      label_width = tft.textWidth(msg_beacon_droid_param[i]);
+    }
+    if (tft.textWidth(msg_beacon_location_param[i])>label_width) {
+      label_width = tft.textWidth(msg_beacon_location_param[i]);
+    }
   }
-  tft.drawString(msg, tft.width()/2, y);
-  y = tft.fontHeight() + (DEFAULT_TEXT_PADDING*2);
+  Serial.print("label_width = ");
+  Serial.println(label_width);
+  */
 
-  // loop over each setting
+  // shrink the screen to give a little gap between the content and screen edge
+  tft.setViewport(10, 10, tft.width()-20, tft.height()-20);
+  tft.setTextSize(BEACON_EXPERT_TEXT_SIZE);
+  tft.setCursor(0,0);
+
+  // print the beacon type label
+  snprintf(msg, MSG_LEN_MAX, "%s: ", msg_type);
+  tft.setTextColor(BEACON_EXPERT_LABEL_COLOR);
+  tft.print(msg);
+
+  // print the beacon type
+  if (selected_item == 0) {
+    tft.setTextColor(BEACON_EXPERT_VALUE_SELECTED_COLOR);
+  } else {
+    tft.setTextColor(BEACON_EXPERT_VALUE_COLOR);
+  }
+  if (beacon.type == DROID) {
+    snprintf(msg, MSG_LEN_MAX, "%s", msg_droid);
+  } else {
+    snprintf(msg, MSG_LEN_MAX, "%s", msg_location);
+  }
+  tft.println(msg);
+  tft.setCursor(tft.getCursorX(), tft.getCursorY() + 2);
+
+  // print the various parameters of the beacon
   for (i=0; i<NUM_BEACON_PARAMS; i++) {
 
-    // display setting name
-    tft.setTextDatum(TR_DATUM);
-    tft.setTextColor(SETTING_NAME_COLOR);
-    snprintf(msg, MSG_LEN_MAX, "%s:", (beacon.type == DROID ? msg_beacon_droid_param[i] : msg_beacon_location_param[i]));
-    tft.drawString(msg, ((tft.width()/2) - DEFAULT_TEXT_PADDING), y);
-
-    // set the setting value font color depending on whether or not this particular parameter is selected
-    if ((i == 0 && state == BEACON_EDIT_PARAM1) ||
-        (i == 1 && state == BEACON_EDIT_PARAM2) ||
-        (i == 2 && state == BEACON_EDIT_PARAM3)) 
-    {
-      tft.setTextColor(SETTING_SELECTED_VALUE_COLOR);
+    // label
+    if (beacon.type == DROID) {
+      snprintf(msg, MSG_LEN_MAX, "%s: ", msg_beacon_droid_param[i]);
     } else {
-      tft.setTextColor(SETTING_VALUE_COLOR);
+      snprintf(msg, MSG_LEN_MAX, "%s: ", msg_beacon_location_param[i]);
     }
+    tft.setTextColor(BEACON_EXPERT_LABEL_COLOR);
+    tft.print(msg);
 
-    // load msg[] with the value of the setting
+    // value
+    snprintf(msg, MSG_LEN_MAX, "%d", beacon.setting[i]);
 
+    // droid beacon
     if (beacon.type == DROID) {
 
-      // DROID:personality
-      if (i == 0) {
-        if (beacon.setting[0] < (sizeof(msg_droid_personalities) / sizeof(char*))) {
-          snprintf(msg, MSG_LEN_MAX, "%s", msg_droid_personalities[beacon.setting[0]]);
-        } else {
-          snprintf(msg, MSG_LEN_MAX, msg_unknown_int, beacon.setting[0]);
+      // personality
+      if (i==0) {
+          for (j=0; j<sizeof(droid_beacons)/sizeof(beacon_item_t); j++) {
+            if (droid_beacons[j].id == beacon.setting[i]) {
+              snprintf(msg, MSG_LEN_MAX, "%s", droid_beacons[j].label);
+              break;
+            }
+          }
+
+      // affiliation
+      } else if (i==1) {
+        switch(beacon.setting[i]) {
+          case 1:
+          case 5:
+          case 9:
+            snprintf(msg, MSG_LEN_MAX, "%s", msg_droid_affiliation[beacon.setting[i] >> 2]);
+            break;
         }
 
-      // DROID:affiliation
-      } else if (i == 1) {
-        if ( beacon.setting[1] == 1 || beacon.setting[1] == 5 || beacon.setting[1] == 9) {
-          snprintf(msg, MSG_LEN_MAX, "%s", msg_droid_personalities[beacon.setting[0] >> 2]);
+      // paired
+      } else if (i==2) {
+        if (beacon.setting[i] == 0) {
+          snprintf(msg, MSG_LEN_MAX, "%s", msg_no);
         } else {
-          snprintf(msg, MSG_LEN_MAX, msg_unknown_int, beacon.setting[0]);
+          snprintf(msg, MSG_LEN_MAX, "%s", msg_yes);
         }
-      } 
+      }
+
+    // location beacon
     } else {
 
-      // LOCATION:location
-      if (i == 0) {
-        if (beacon.setting[0] < (sizeof(msg_locations) / sizeof(char*))) {
-          snprintf(msg, MSG_LEN_MAX, "%s", msg_locations[beacon.setting[0]]);
-        } else {
-          snprintf(msg, MSG_LEN_MAX, msg_unknown_int, beacon.setting[0]);
-        }
+      // location
+      if (i==0) {
+          for (j=0; j<sizeof(location_beacons)/sizeof(beacon_item_t); j++) {
+            if (location_beacons[j].id == beacon.setting[i]) {
+              snprintf(msg, MSG_LEN_MAX, "%s", location_beacons[j].label);
+              break;
+            }
+          }
 
-      // LOCATION:interval
-      } else if (i == 1) {
-        snprintf(msg, MSG_LEN_MAX, "%d", beacon.setting[1]);
+      // reaction interval (in minutes)
+      } else if (i==1) {
+        ;
 
-      // LOCATION:minimum rssi
-      } else if (i == 2) {
-        snprintf(msg, MSG_LEN_MAX, "-%d", beacon.setting[2]);
+      // minimum rssi
+      } else if (i==2) {
+        snprintf(msg, MSG_LEN_MAX, "-%ddBm", beacon.setting[i]);
       }
     }
-
-    // display parameter value
-    tft.setTextDatum(TL_DATUM);
-    tft.drawString(msg, ((tft.width()/2) + DEFAULT_TEXT_PADDING), y);
-
-    // increment y to the next line
-    y += tft.fontHeight() + DEFAULT_TEXT_PADDING;
-  }
-
-  // display activate button
-  tft.setTextSize(DEFAULT_TEXT_SIZE);
-  tft.setTextDatum(TC_DATUM);
-  if (state == BEACON_ACTIVE || state == BEACON_ACTIVATE ) {
-    tft.setTextColor(SETTING_SELECTED_VALUE_COLOR);
-    if (state == BEACON_ACTIVE) {
-      snprintf(msg, MSG_LEN_MAX, "%s", msg_beacon_active);
+    if (selected_item == i+1) {
+      tft.setTextColor(BEACON_EXPERT_VALUE_SELECTED_COLOR);
     } else {
-      snprintf(msg, MSG_LEN_MAX, "%s", msg_activate_beacon);
+      tft.setTextColor(BEACON_EXPERT_VALUE_COLOR);
     }
+    tft.println(msg);
+    tft.setCursor(tft.getCursorX(), tft.getCursorY() + 2);
+  }
+  
+  // display beacon state (active/inactive)
+  snprintf(msg, MSG_LEN_MAX, "%s: ", msg_state);
+  tft.setTextColor(BEACON_EXPERT_LABEL_COLOR);
+  tft.print(msg);
+
+  if (selected_item == NUM_BEACON_PARAMS+1) {
+    tft.setTextColor(BEACON_EXPERT_VALUE_SELECTED_COLOR);
   } else {
-    tft.setTextColor(SETTING_VALUE_COLOR);
+    tft.setTextColor(BEACON_EXPERT_VALUE_COLOR);
+  }
+  
+  if (state == BEACON_EXPERT_ACTIVE) {
+    snprintf(msg, MSG_LEN_MAX, "%s", msg_beacon_active);
+  } else {
     snprintf(msg, MSG_LEN_MAX, "%s", msg_activate_beacon);
   }
-  tft.drawString(msg, tft.width()/2,  y);
+  tft.println(msg);
 }
-// --- SAVE_FOR_LATER END --- */
 
 void update_display() {
   uint16_t y;
@@ -1519,6 +1572,11 @@ void update_display() {
       tft.drawString(msg_scanner_active, tft.width()/2, tft.height()/2);
       break;
 
+    case BEACON_EXPERT_ACTIVE:  // display_beacon_expert()
+    case BEACON_EXPERT:
+      display_beacon_expert();
+      break;
+
     case BEACON_ACTIVATE:        // display_beacon_control()
     case BEACON_ACTIVE:
       display_beacon_control();
@@ -1553,6 +1611,7 @@ void button1(button_press_t press_type) {
 
   static uint32_t last_time_btn1 = 0;
   static uint32_t last_time_btn1_down = 0;
+  uint8_t i;
 
   switch (state) {
     case SPLASH:
@@ -1571,7 +1630,29 @@ void button1(button_press_t press_type) {
       state = beacon_type_menu[selected_item].state;
       if (state == BEACON_RANDOM) {
         set_random_beacon();
+
+        // the following if/else block is setting selected_item to the value of the randomly selected beacon
+        // in its respective beacon list. this is being done so when you go back (long button 2 press)
+        // you'll be brought to the element in the beacon list where the randomly selected beacon is
+        if (beacon.type == DROID) {
+          for(i=0; i<sizeof(droid_beacons) / sizeof(beacon_item_t); i++) {
+            if (droid_beacons[i].id == beacon.setting[0]) {
+              selected_item = i;
+              break;
+            }
+          }
+        } else {
+          for(i=0; i<sizeof(location_beacons) / sizeof(beacon_item_t); i++) {
+            if (location_beacons[i].id == beacon.setting[0]) {
+              selected_item = i;
+              break;
+            }
+          }
+        }
         state = BEACON_ACTIVATE;
+      } else if (state == BEACON_EXPERT) {
+        set_random_beacon();
+        selected_item = 0;
       } else {
         selected_item = 0;
       }
@@ -1601,6 +1682,90 @@ void button1(button_press_t press_type) {
     case BEACON_ACTIVE:
       pAdvertising->stop();
       state = BEACON_ACTIVATE;
+      tft_update = true;
+      break;
+
+    case BEACON_EXPERT:
+      // change beacon type
+      if (selected_item == 0) {
+        if (beacon.type == DROID) {
+          beacon.type = LOCATION;
+          beacon.setting[0] = 1;  // default location
+          beacon.setting[1] = 2;  // default interval
+          beacon.setting[2] = 38; // default minimim rssi
+        } else {
+          beacon.type = DROID;
+          beacon.setting[0] = 1;  // default personality
+          beacon.setting[1] = 1;  // default affiliation
+          beacon.setting[2] = 1;  // default paired
+        }
+
+      // change beacon parameter 1
+      } else if (selected_item == 1) {
+         beacon.setting[0]++; 
+
+        // droid:personality
+        if (beacon.type == DROID) {
+          if (press_type == LONG_PRESS) {
+            beacon.setting[0] = 0;  // personality 0 doesn't exist...
+          }
+
+        // location:location
+        } else {
+          if (press_type == LONG_PRESS) {
+            beacon.setting[0] = 0;  // location 0 doesn't exist...
+          }
+        }
+
+      // change beacon parameter 2
+      } else if (selected_item == 2) {
+        beacon.setting[1]++;
+
+        // droid:affiliation
+        if (beacon.type == DROID) {
+          if (press_type == LONG_PRESS || beacon.setting[1] > 0x3F) {
+            beacon.setting[1] = 0;  // affiliation values beyond 0x3F break the formula
+          }
+
+        // location: reaction interval
+        } else {
+          if (press_type == LONG_PRESS || beacon.setting[1] > 0x33) {
+            beacon.setting[1] = 0;  // can't have a reaction interval value greater than 0x33 (51) as it breaks the formula
+          }
+        }
+
+      // change beacon parameter 3
+      } else if (selected_item == 3) {
+        beacon.setting[2]++;
+
+        // droid:paired with remote?
+        if (beacon.type == DROID) {
+          if (beacon.setting[2] > 1) {    // swap betweeen paired (1) and not paired (0)
+            beacon.setting[2] = 0;
+          }
+
+        // location:minimum rssi for a reaction
+        } else {
+          if (press_type == LONG_PRESS || beacon.setting[2] > 80) {
+                                          // -80dBm is a pretty weak signal
+            beacon.setting[2] = 20;       // from my experience an rssi of -28dBm is about 1 foot from the droid
+                                          // is there any reason to go lower than -20dBm?
+          }
+        }
+
+      // change beacon state (active or inactive)
+      } else if (selected_item == 4) {
+        init_advertisement_data();
+        set_payload_from_beacon();
+        pAdvertising->start();
+        state = BEACON_EXPERT_ACTIVE;
+      }
+      tft_update = true;
+      break;
+
+    case BEACON_EXPERT_ACTIVE:
+      pAdvertising->stop();
+      state = BEACON_EXPERT;
       tft_update = true;
       break;
 
@@ -1766,6 +1931,30 @@ void button2(button_press_t press_type) {
         }
       } else {
         state = BEACON_ACTIVATE;
+      }
+      tft_update = true;
+      break;
+
+    case BEACON_EXPERT:
+      if (press_type == LONG_PRESS) {
+        state = BEACON_TYPE_MENU;
+        selected_item = 3;
+      } else {
+        selected_item++;
+        if (selected_item >= NUM_BEACON_PARAMS+2) {
+          selected_item = 0;
+        }
+      }
+      tft_update = true;
+      break;
+
+    case BEACON_EXPERT_ACTIVE:
+      pAdvertising->stop();
+      if (press_type == LONG_PRESS) {
+        state = BEACON_TYPE_MENU;
+        selected_item = 3;
+      } else {
+        state = BEACON_EXPERT;
       }
       tft_update = true;
       break;
@@ -2002,7 +2191,7 @@ void loop() {
   if (millis() - last_activity > SLEEP_AFTER) {
 
     // do not go to sleep if the beacon is active
-    if (state != BEACON_ACTIVE) {
+    if (state != BEACON_ACTIVE && state != BEACON_EXPERT_ACTIVE) {
       Serial.println("Going to sleep.");
       delay(100);
       esp_deep_sleep_start();
