@@ -1,4 +1,4 @@
-# Droid Toolbox
+# Droid Toolbox - v0.60
 This is an [Arduino IDE](https://www.arduino.cc/en/software) sketch for ESP32-based devices to interact with [Galaxy's Edge droids](https://disneyworld.disney.go.com/shops/hollywood-studios/droid-depot/). It can emit a bluetooth beacon that droids will react to, scan for nearby droids, and connect to droids and command them to play specific audio tracks from their personality chip. A YouTube video of the Droid Toolbox in action is available at https://www.youtube.com/watch?v=0sHTIEbTevk.
 
 This code was specifically designed for [LILYGO TTGO T-Display](http://www.lilygo.cn/prod_view.aspx?Id=1126) and [LILYGO T-Display-S3](http://www.lilygo.cn/prod_view.aspx?Id=1413) devices and may not display correctly on other ESP32 devices without modification.
@@ -7,7 +7,7 @@ This code was specifically designed for [LILYGO TTGO T-Display](http://www.lilyg
 
 ## Features
 * Select between emitting a beacon or scanning for nearby droids.
-* When the beacon is activated, a random location beacon is generated.
+* The emitted beacon can be selected/customized.
 * Connect to droid and make is play a specific track from a specific audio group.
 * Change the volume level of the droid.
 * Auto shut-off.
@@ -43,11 +43,42 @@ This code was specifically designed for [LILYGO TTGO T-Display](http://www.lilyg
 * A long press is any press that lasts for 500ms or longer.
 * If a button press type is not explicitly stated in the instructions below, either press type applies.
 
-### Beacon
-![Image of a TTGO showing "BEACON ON" on the display.](images/v0.1_05_beacon.jpg)
-* Press button 1 to toggle the beacon on and off.
-* The beacon is a location beacon. The location is chosen at random every time it is activated.
-* Press button 2 to exit the beacon mode. If a beacon is active when button 2 is pressed it will be deactivated.
+### Beacons
+* A short button 2 press will scroll through the available beacon options
+* A button 1 press will select that option
+* A long button 2 press will return to the previous menu
+
+![Image of a TTGO showing a 'select beacon type' menu on the display.](images/v0.60_05_beacon_menu.jpg)
+* First select a beacon type
+  * **Location** beacons represent different areas of Galaxy's Edge
+  * **Droid** beacons represent individual droids and their current personality chip
+  * **Random** will select a beacon at random
+  * **Expert** For those who want to experiment
+
+![Image of a TTGO showing a 'select a beacon' menu on the display.](images/v0.60_09_select_beacon.jpg)
+* If you selected location or droid, select the location or droid beacon you would like to emit.
+
+![Image of a TTGO showing a 'select a beacon' menu on the display.](images/v0.60_10_beacon_active.jpg)
+* Once your beacon is selected you'll be shown a screen identifying the beacon and whether or not it is active.
+* To activate the beacon, press button 1. 
+* To deactivate the beacon, press button 1 again.
+* To exit this beacon, long-press button 2.
+
+![Image of a TTGO showing a 'select a beacon' menu on the display.](images/v0.60_11_beacon_expert.jpg)
+* In expert mode you have control over all the key values that are part of a beacon.
+  * **TYPE** The beacon type; either droid or location
+  * **LCNT** for location beacons; the location ID. if the ID is known the name is displayed, otherwise the numerical value is displayed
+  * **REACT INT** for location beacons; how many minutes a droid will wait before reacting to the beacon
+  * **MIN RSSI** for location beacons; the minimum RSSI (received signal strength indicator) the droid must detect of the beacon in order to react to it
+  * **CHIP** for droid beacons; the ID of the personality chip; names of known personality chips will be displayed, otherwise the numerical value is displayed
+  * **AFFL** for droid beacons; the droid's affiliation (scoundrel, resistance, first order), if you don't pick a known affiliation, the numerical value is displayed
+  * **PAIRED** for droid beacons; indicates if the droid is paired with a remote or not
+  * **STATE** whether or not the beacon is active
+* To navigate, short-press button 2 to move through the different settings of the beacon.
+* Short-press button 1 to change the current value of a setting.
+* Long-press button 1 to reset a parameter to it's lowest value
+* Long-press button 2 to exit expert mode
+* Don't get cocky
 
 ### Scanning
 ![Image of a TTGO with the text 'SCANNING' across the screen.](images/v0.1_03_scanning.jpg)
