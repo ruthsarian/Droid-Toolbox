@@ -1651,7 +1651,11 @@ void button1(button_press_t press_type) {
         }
         state = BEACON_ACTIVATE;
       } else if (state == BEACON_EXPERT) {
-        set_random_beacon();
+
+        // let whatever is currently in beacon be displayed on the expert screen.
+        // let's users see what the stock beacons look like. if they figure out this little trick of set a beacon, then back out to expert mode.
+        //set_random_beacon();
+
         selected_item = 0;
       } else {
         selected_item = 0;
@@ -2121,6 +2125,9 @@ void setup() {
   for (i = 0; i < MAX_DROIDS; i++) {
     droids[i].pAdvertisedDevice = nullptr;
   }
+
+  // just so there's no garbage in there if it gets used before being initilized.
+  set_random_beacon();
 
   // init serial monitor
   Serial.begin(115200);
