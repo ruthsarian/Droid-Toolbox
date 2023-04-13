@@ -1,10 +1,4 @@
-/* Droid Toolbox v0.60.ALPHA : ruthsarian@gmail.com
- *
- *
- * v0.60 TODO:
- *  - finish moving all colors into the #define section at top of code
- *  - clean up/remove old formatting stuff
- * 
+/* Droid Toolbox v0.60 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * NOTE: your droid remote MUST BE OFF for this to work!
@@ -116,7 +110,7 @@
  *   consider a method for setting font sizes based on screen size
  *
  * HISTORY
- *   v0.57 : added ability to select which beacon the droid toolbox will produce
+ *   v0.60 : added ability to select which beacon the droid toolbox will produce
  *           expert beacon mode allows finer control over the beacon; i probably should have hidden it behind a key combination...
  *           added global beacon variable to store the details of the beacon that will be produced
  *           lots of work on the underlying menu system and helper functions
@@ -167,7 +161,7 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.60.ALPHA"           // the version displayed on the splash screen at the lower right
+#define MSG_VERSION                         "v0.60"                 // the version displayed on the splash screen at the lower right
 
 #define DEFAULT_TEXT_SIZE                   2                       // a generic size used throughout 
 #define DEFAULT_TEXT_COLOR                  TFT_DARKGREY            // e.g. 'turn off your droid remote'
@@ -223,9 +217,21 @@
 #define DROID_REPORT_ADDRESS_COLOR          TFT_BLUE
 #define DROID_REPORT_RSSI_COLOR             TFT_PURPLE
 
-#define SETTING_NAME_COLOR                  TFT_DARKGREY
-#define SETTING_VALUE_COLOR                 TFT_BROWN
-#define SETTING_SELECTED_VALUE_COLOR        TFT_YELLOW
+#define SOUNDS_TEXT_SIZE                    (DEFAULT_TEXT_SIZE + 1)
+#define SOUNDS_TEXT_PADDING                 DEFAULT_TEXT_PADDING
+#define SOUNDS_GROUP_COLOR                  TFT_BLUE
+#define SOUNDS_TRACK_COLOR                  TFT_RED
+#define SOUNDS_VALUE_COLOR                  TFT_DARKGREY
+#define SOUNDS_VALUE_SELECTED_COLOR         TFT_GREEN
+
+#define VOLUME_TEXT_SIZE                    (DEFAULT_TEXT_SIZE + 1)
+#define VOLUME_TEXT_PADDING                 DEFAULT_TEXT_PADDING
+#define VOLUME_LOW_COLOR                    TFT_CYAN
+#define VOLUME_MED_COLOR                    TFT_YELLOW
+#define VOLUME_HIGH_COLOR                   TFT_RED
+#define VOLUME_MAX_COLOR                    TFT_MAGENTA
+#define VOLUME_TEXT_COLOR                   TFT_DARKGREY
+#define VOLUME_SELECTED_TEXT_COLOR          TFT_GREEN
 
 #define SLEEP_AFTER 5 * 60 * 1000  // how many milliseconds of inactivity before going to sleep/hibernation
 
@@ -270,6 +276,12 @@ const char msg_yes[]                    = "YES";
 const char msg_no[]                     = "NO";
 const char msg_type[]                   = "TYPE";
 const char msg_state[]                  = "STATE";
+const char msg_group[]                  = "Group";
+const char msg_track[]                  = "Track";
+const char msg_play[]                   = "PLAY";
+const char msg_vol_inc[]                = "VOL+";
+const char msg_vol_dec[]                = "VOL-";
+const char msg_set_vol[]                = "SET VOLUME";
 
 // the index of a personality name in this array should correspond to that personality's ID
 // not following this will result in the wrong names being displayed
@@ -920,12 +932,6 @@ void ble_scan() {
   pBLEScan->clearResults();
 }
 
-// todo: deprecate this function
-void tft_println_center(const char* msg) {
-  tft.setCursor((tft.width() / 2) - (tft.textWidth(msg) / 2), tft.getCursorY());
-  tft.println(msg);
-}
-
 void reset_screen(void) {
   tft.resetViewport();
   tft.fillScreen(TFT_BLACK);
@@ -1283,87 +1289,125 @@ void display_scanner_results() {
   }
 }
 
-void display_track_select() {
+void display_sounds() {
   char msg[MSG_LEN_MAX];
-  
-  uint8_t vgap = 0;
-  uint8_t hgap = 0;
+  uint16_t x, y;
+
+  // line1: group
+  // line2: track
+  // line3: gap
+  // line4: play
 
   // display instruction
-  tft.setTextSize(3);
+  tft.setTextSize(SOUNDS_TEXT_SIZE);
 
-  vgap = (tft.height() - (tft.fontHeight() * 3)) / 3;
+  // let's figure out how to center all this 
+  snprintf(msg, MSG_LEN_MAX, "%s: ", msg_group);
+  x = tft.textWidth(msg);
+  snprintf(msg, MSG_LEN_MAX, "%s: ", msg_track);
+  if (tft.textWidth(msg) > x) {
+    x = tft.textWidth(msg);
+  }
 
-  snprintf(msg, MSG_LEN_MAX, "Group: 88");
-  hgap = (tft.width() - tft.textWidth(msg))/2;
+  // the vertical split is located
+  x = ((tft.getViewportWidth() - (x + tft.textWidth("88")))/2) + x;
 
-  tft.setCursor(hgap, tft.getCursorY() + vgap - 2);
-  tft.setTextColor(TFT_BLUE);
-  tft.print("Group: ");
-  tft.setTextColor((state == SOUND_GROUP) ? TFT_GREEN : TFT_DARKGREY);
+  // find the starting point to draw text
+  y = (tft.fontHeight() * 4) + SOUNDS_TEXT_PADDING;
+  y = (tft.getViewportHeight() - y)/2;
+
+  // display group label
+  snprintf(msg, MSG_LEN_MAX, "%s: ", msg_group);
+  tft.setTextDatum(TR_DATUM);
+  tft.setTextColor(SOUNDS_GROUP_COLOR);
+  tft.drawString(msg, x, y);
+
+  // display group value
   snprintf(msg, MSG_LEN_MAX, "%d", (current_group + 1));
-  tft.println(msg);
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextColor((state == SOUND_GROUP) ? SOUNDS_VALUE_SELECTED_COLOR : SOUNDS_VALUE_COLOR);
+  tft.drawString(msg, x, y);
 
-  tft.setCursor(hgap, tft.getCursorY() + 5);
-  tft.setTextColor(TFT_RED);
-  tft.print("Track: ");
-  tft.setTextColor((state == SOUND_TRACK) ? TFT_GREEN : TFT_DARKGREY);
+  // move next line
+  y += tft.fontHeight() + SOUNDS_TEXT_PADDING;
+
+  // display track label
+  snprintf(msg, MSG_LEN_MAX, "%s: ", msg_track);
+  tft.setTextDatum(TR_DATUM);
+  tft.setTextColor(SOUNDS_TRACK_COLOR);
+  tft.drawString(msg, x, y);
+
+  // display track value
   snprintf(msg, MSG_LEN_MAX, "%d", (current_track + 1));
-  tft.println(msg);
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextColor((state == SOUND_TRACK) ? SOUNDS_VALUE_SELECTED_COLOR : SOUNDS_VALUE_COLOR);
+  tft.drawString(msg, x, y); 
 
-  tft.setCursor(0, tft.getCursorY() + vgap);
-  tft.setTextColor((state == SOUND_PLAY) ? TFT_GREEN : TFT_DARKGREY);
-  tft_println_center("PLAY");
+  // move down to draw play button
+  y += (tft.fontHeight() * 2);
+
+  // display play button
+  tft.setTextDatum(TC_DATUM);
+  tft.setTextColor((state == SOUND_PLAY) ? SOUNDS_VALUE_SELECTED_COLOR : SOUNDS_VALUE_COLOR);
+  tft.drawString(msg_play, tft.getViewportWidth()/2, y);
 }
 
 void display_volume() {
   char msg[MSG_LEN_MAX];
-  uint8_t hgap = 0;
-  uint8_t vgap = 0;
-  uint8_t v2 = 0;
+  uint16_t content_height;
+  uint16_t x, y;
 
-  // sizes 3 and 4 are used on this screen. we need to take the heights of both sizes into account
-  // when calculating the size of the vertical gaps.
-  tft.setTextSize(3);
-  vgap = tft.fontHeight() * 2;
+  // line1: volume
+  // line2: gap
+  // line3: vol+ / vol-
+  // line4: set volume
 
-  tft.setTextSize(5);
-  vgap = (tft.height() - tft.fontHeight() - vgap) / 3;
-  
-  tft.setCursor(tft.getCursorX(), vgap * 0.9);
+  // find where to start rendering content vertically
+  tft.setTextSize(1);
+  content_height = (tft.fontHeight() * VOLUME_TEXT_SIZE * 3) + VOLUME_TEXT_PADDING + (tft.fontHeight() * (VOLUME_TEXT_SIZE + 2));
+  y = (tft.getViewportHeight() - content_height) / 2;
 
-  // change volume color based on its value
+  // set volume color based on its value
   if (droid_volume < 50) {
-    tft.setTextColor(TFT_CYAN);
+    tft.setTextColor(VOLUME_LOW_COLOR);
   } else if (droid_volume < 80) {
-    tft.setTextColor(TFT_YELLOW);
+    tft.setTextColor(VOLUME_MED_COLOR);
   } else if (droid_volume < 100) {
-    tft.setTextColor(TFT_RED);
+    tft.setTextColor(VOLUME_HIGH_COLOR);
   } else {
-    tft.setTextColor(TFT_MAGENTA);
+    tft.setTextColor(VOLUME_MAX_COLOR);
   }
 
+  // display volume
   snprintf(msg, MSG_LEN_MAX, "%d", droid_volume);
-  tft_println_center(msg);
-  tft.setCursor(tft.getCursorX(), tft.getCursorY() + (vgap * 0.9));
+  tft.setTextDatum(TC_DATUM);
+  tft.setTextSize(VOLUME_TEXT_SIZE + 2);
+  tft.drawString(msg, tft.getViewportWidth()/2, y);
+
+  // next line
+  y += tft.fontHeight();
   
-  tft.setTextSize(3);
-  tft.setTextColor(TFT_GREEN);
-  snprintf(msg, MSG_LEN_MAX, "VOL+");
-  hgap = (tft.width() - (tft.textWidth(msg) * 2)) / 3;
-  tft.setCursor(hgap, tft.getCursorY());
+  // gap
+  tft.setTextSize(VOLUME_TEXT_SIZE);
+  y += tft.fontHeight();
 
-  tft.setTextColor((state == VOLUME_UP ? TFT_GREEN : TFT_DARKGREY));
-  tft.print(msg);
-  tft.setCursor(tft.getCursorX() + hgap, tft.getCursorY());
+  // vol+
+  tft.setTextColor((state == VOLUME_UP ? VOLUME_SELECTED_TEXT_COLOR : VOLUME_TEXT_COLOR));
+  tft.setTextDatum(TR_DATUM);
+  tft.drawString(msg_vol_inc, (tft.getViewportWidth()/2) - VOLUME_TEXT_PADDING, y);
 
-  tft.setTextColor((state == VOLUME_DOWN ? TFT_GREEN : TFT_DARKGREY));
-  snprintf(msg, MSG_LEN_MAX, "VOL-");
-  tft.println(msg);
-  tft.setCursor(tft.getCursorX(), tft.getCursorY() + (vgap * 0.3));
+  // vol-
+  tft.setTextColor((state == VOLUME_DOWN ? VOLUME_SELECTED_TEXT_COLOR : VOLUME_TEXT_COLOR));
+  tft.setTextDatum(TL_DATUM);
+  tft.drawString(msg_vol_dec, (tft.getViewportWidth()/2) + VOLUME_TEXT_PADDING, y);
 
-  tft.setTextColor((state == VOLUME_TEST ? TFT_GREEN : TFT_DARKGREY));
-  tft_println_center("SET VOLUME");
+  // next line
+  y += (tft.fontHeight() + VOLUME_TEXT_PADDING);
+
+  // set volume
+  tft.setTextColor((state == VOLUME_TEST ? VOLUME_SELECTED_TEXT_COLOR : VOLUME_TEXT_COLOR));
+  tft.setTextDatum(TC_DATUM);
+  tft.drawString(msg_set_vol, tft.getViewportWidth()/2, y);
 }
 
 void display_beacon_expert() {
@@ -1523,11 +1567,11 @@ void update_display() {
       display_volume();
       break;
 
-    case SOUND_GROUP:            // display_track_select()
+    case SOUND_GROUP:            // display_sounds()
     case SOUND_TRACK:
     case SOUND_PLAY:
     case SOUND_PLAYING:
-      display_track_select();
+      display_sounds();
       break;
 
     case CONNECTED_MENU:         // display_connected_menu()
