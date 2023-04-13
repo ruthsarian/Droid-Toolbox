@@ -167,6 +167,7 @@
 #define NUM_BEACON_PARAMS                3
 #define C565(r,g,b)                     ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)    // macro to convert RGB values to TFT_eSPI color value
 
+
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
 #define MSG_VERSION                         "v0.57.ALPHA"           // the version displayed on the splash screen at the lower right
@@ -199,8 +200,9 @@
 #define BEACON_SELECT_SELECTED_TEXT_COLOR   TFT_GREEN
 #define BEACON_SELECT_SELECTED_BORDER_COLOR TFT_BLUE
 
-#define BEACON_CONTROL_TEXT_SIZE            DEFAULT_TEXT_SIZE + 1
+#define BEACON_CONTROL_TEXT_SIZE            (DEFAULT_TEXT_SIZE + 1)
 #define BEACON_CONTROL_TEXT_PADDING         DEFAULT_TEXT_PADDING
+#define BEACON_CONTROL_TYPE_TEXT_SIZE       DEFAULT_TEXT_SIZE
 #define BEACON_CONTROL_TYPE_COLOR           TFT_BLUE
 #define BEACON_CONTROL_ID_COLOR             TFT_RED
 #define BEACON_CONTROL_ACTIVE_COLOR         TFT_YELLOW
@@ -258,8 +260,8 @@ const char msg_random[]                 = "RANDOM";
 const char msg_droid[]                  = "DROID";
 const char msg_location[]               = "LOCATION";
 const char msg_beacon_settings[]        = "BEACON SETTINGS";
-const char msg_activate_beacon[]        = "beacon inactive";
-const char msg_beacon_active[]          = "BEACON ACTIVE";
+const char msg_activate_beacon[]        = "inactive";
+const char msg_beacon_active[]          = "ACTIVE";
 
 // the index of a personality name in this array should correspond to that personality's ID
 // not following this will result in the wrong names being displayed
@@ -1091,7 +1093,8 @@ void display_beacon_menu(const char* caption, beacon_item_t* menu_items, uint8_t
 }
 
 void display_beacon_control() {
-  uint16_t y;
+  uint16_t y, content_height;
+  uint8_t gap, bfs;
   char msg[MSG_LEN_MAX];
 
   // line 1: beacon type
@@ -1099,37 +1102,55 @@ void display_beacon_control() {
   // line 3: gap
   // line 3: beacon state
 
-  tft.setTextDatum(TC_DATUM);
-  tft.setTextSize(BEACON_CONTROL_TEXT_SIZE);
+  tft.setTextSize(1);
+  bfs = tft.fontHeight();
+  
+  gap = (bfs * BEACON_CONTROL_TEXT_SIZE) / 2;
+  Serial.print("BC:gap = ");
+  Serial.println(gap);
+
+  content_height = (bfs * BEACON_CONTROL_TYPE_TEXT_SIZE) + (bfs * BEACON_CONTROL_TEXT_SIZE *2) + gap + (BEACON_CONTROL_TEXT_PADDING * 3);
+  Serial.print("BC:content_height = ");
+  Serial.println(content_height);
 
   // calculate where to begin drawing text  
-  y = (tft.getViewportHeight() - ((tft.fontHeight() * 4) + (BEACON_CONTROL_TEXT_PADDING * 3)))/2;
+  y = (tft.getViewportHeight() - content_height)/2;
+
+  Serial.print("BC:y = ");
+  Serial.println(y);
+  Serial.println();
+
+  // begin rendering the screen
+  tft.setTextDatum(TC_DATUM);
   
   // display beacon type
+  tft.setTextSize(BEACON_CONTROL_TYPE_TEXT_SIZE);
+  tft.setTextColor(BEACON_CONTROL_TYPE_COLOR);
   if (beacon.type == DROID) {
     snprintf(msg, MSG_LEN_MAX, "%s %s", msg_droid, msg_beacon);
   } else {
     snprintf(msg, MSG_LEN_MAX, "%s %s", msg_location, msg_beacon);
   }
-  tft.setTextColor(BEACON_CONTROL_TYPE_COLOR);
   tft.drawString(msg, tft.getViewportWidth()/2, y);
 
   // adjust position for next line
   y += tft.fontHeight() + BEACON_CONTROL_TEXT_PADDING;
 
   // display beacon id
+  tft.setTextSize(BEACON_CONTROL_TEXT_SIZE);
+  tft.setTextColor(BEACON_CONTROL_ID_COLOR);
   if (beacon.type == DROID) {
     snprintf(msg, MSG_LEN_MAX, "%s", msg_droid_personalities[beacon.setting[0]]);
   } else {
     snprintf(msg, MSG_LEN_MAX, "%s", msg_locations[beacon.setting[0]]);
   }
-  tft.setTextColor(BEACON_CONTROL_ID_COLOR);
   tft.drawString(msg, tft.getViewportWidth()/2, y);
 
   // adjust position for next line
-  y += (tft.fontHeight() + BEACON_CONTROL_TEXT_PADDING)*2;
+  y += tft.fontHeight() + (BEACON_CONTROL_TEXT_PADDING * 2) + gap;
 
   // display beacon state
+  tft.setTextSize(BEACON_CONTROL_TEXT_SIZE);
   if (state == BEACON_ACTIVE) {
     tft.setTextColor(BEACON_CONTROL_ACTIVE_COLOR);
     tft.drawString(msg_beacon_active, tft.getViewportWidth()/2, y);
@@ -1720,26 +1741,33 @@ void button2(button_press_t press_type) {
       break;
 
     case BEACON_ACTIVATE:
-      if (press_type == LONG_PRESS) {     // should probably not care about long press...
+      if (press_type == LONG_PRESS) {
         if (beacon.type == DROID) {
           state = BEACON_DROID_LIST;
         } else {
           state = BEACON_LOCATION_LIST;
         }
-        tft_update = true;
-      } 
+      } else {
+        init_advertisement_data();
+        set_payload_from_beacon();
+        pAdvertising->start();
+        state = BEACON_ACTIVE;
+      }
+      tft_update = true;
       break;
 
     case BEACON_ACTIVE:
-      if (press_type == LONG_PRESS) {     // should probably not care about long press...
-        pAdvertising->stop();
+      pAdvertising->stop();
+      if (press_type == LONG_PRESS) {
         if (beacon.type == DROID) {
           state = BEACON_DROID_LIST;
         } else {
           state = BEACON_LOCATION_LIST;
         }
-        tft_update = true;
-      } 
+      } else {
+        state = BEACON_ACTIVATE;
+      }
+      tft_update = true;
       break;
 
     case SCANNER_RESULTS:
