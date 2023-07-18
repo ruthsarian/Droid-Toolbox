@@ -24,16 +24,20 @@
  *  see: https://github.com/Bodmer/TFT_eSPI
  *  
  *  NOTE 1: 
- *    the T-Display-S3, as of writing, requires a modified copy of TFT_eSPI which you can get
- *    at https://github.com/Xinyuan-LilyGO/T-Display-S3
- *  
- *  NOTE 2: 
  *    After installing or updating the TFT_eSPI library you MUST edit User_Setup_Select.h as follows 
  *      1. comment out the line "#include <User_Setup.h>" (line 22-ish)
  *      2. uncomment the line "#include <User_Setups/Setup25_TTGO_T_Display.h>" (line 61-ish) for T-Display
  *         or "#include <User_Setups/Setup206_LilyGo_T_Display_S3.h>" for the T-Display-32
- *      
+ *
  *    Possible path for Windows users: %USERPROFILE%\Documents\Arduino\libraries\TFT_eSPI\User_Setup_Select.h
+ *
+ *  NOTE 2:
+ *    The T-Display-S3 may display the wrong colors. If this happens you'll also need to modify 
+ *    User_Setups/Setup206_LilyGo_T_Display_S3.h in the TFT_eSPI library, locate the two lines, one commented out,
+ *    that begin with "#define TFT_RGB_ORDER". Uncomment the commented-out line, and comment out the uncommented line.
+ *    Then reupload the sketch and the colors should be correct.
+ *
+ *    #define TFT_RGB_ORDER TFT_RGB
  *
  * A BLE library is included in the Arduino ESP32 core. If you have ArduinoBLE already installed you will need
  * to uninstall it in order for this code to compile correctly. To uninstall a library locate your arduino 
@@ -96,9 +100,11 @@
  *        control motors (is this a GOOD idea? probably not...)
  *        other ??
  *   consider a method for setting font sizes based on screen size
+ *   any value in scanning for SWGE East/West beacon (used by the Disney Play app) and identifying which location you're in based off that?
  *
  * HISTORY
- *   v0.61 : TOOD: custom chip IDs, custom BLEADDR names
+ *   v0.61 : reworked how personality, location, and affiliation data is stored in the code to make modification of that data a little easier.
+ *           added ability to display custom names for droids based off their bluetooth address. custom names can be added to the named_droids[] array in the code below.
  *   v0.60 : added ability to select which beacon the droid toolbox will produce
  *           expert beacon mode allows finer control over the beacon; i probably should have hidden it behind a key combination...
  *           added global beacon variable to store the details of the beacon that will be produced
@@ -149,7 +155,7 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.61 ALPHA"                 // the version displayed on the splash screen at the lower right
+#define MSG_VERSION                         "v0.61"                 // the version displayed on the splash screen at the lower right
 
 #define DEFAULT_TEXT_SIZE                   2                       // a generic size used throughout 
 #define DEFAULT_TEXT_COLOR                  TFT_DARKGREY            // e.g. 'turn off your droid remote'
@@ -275,38 +281,70 @@ typedef struct {
   const char *name;     // the personality name; displayed on screen
   uint8_t affiliation;  // the group affiliation (see droid_affiliations[] for relevant values); only used when emulating droid beacons
   uint8_t emulatable;   // 0 = will not be included in list of droid beacons available for emulation
-  const char *bleaddr;  // nullptr = no address; only used to identify an individual droid in scan results
 } personality_t;
 
-// Droid Personality Database
-// BLEADDR can be used to set names for individual droids based on their bluetooth address.
+//
+// Droid Personalities
+//
+// Add custom personality chips to this array!
+//
+// the (E)mulatable flag identifies whether or not that personality will be available as a droid beacon
+//
+// WHY WOULD I NOT WANT A PERSONALITY TO BE EMULATABLE?
+//   - to customize the droid beacon list to something smaller/manageable; removing those you don't use
+//   - to hide custom personality chip identities from being emulatable
+//   - because the programmer created this 'feature' for another reason, then rewrote the code making the 'feature' useless
 personality_t droid_personalities[] = {
-//  ID,   NAME,       AFF,  E, BLEADDR
-  { 0x01, "R Unit",   0x01, 1, nullptr},
-  { 0x02, "BB Unit",  0x01, 1, nullptr},
-  { 0x03, "Blue",     0x05, 1, nullptr},
-  { 0x04, "Gray",     0x01, 1, nullptr},
-  { 0x05, "Red",      0x09, 1, nullptr},
-  { 0x06, "Orange",   0x05, 1, nullptr},
-  { 0x07, "Purple",   0x01, 1, nullptr},
-  { 0x08, "Black",    0x09, 1, nullptr},
-  { 0x09, "CB-23",    0x01, 1, nullptr},
-  { 0x0A, "Yellow",   0x05, 1, nullptr},
-  { 0x0B, "C1-10P",   0x05, 1, nullptr},
-  { 0x0C, "D-O",      0x05, 1, nullptr},
-  { 0x0D, "Blue 2",   0x01, 1, nullptr},
-  { 0x0E, "BD Unit",  0x05, 1, nullptr},
-  { 0x00, "Frank",    0x00, 0, "c2:b1:05:2b:1f:91"},    // no id or affiliation necessary if bleaddr is set and emulatable is set to 0
+//  ID,   NAME,       AFF,  E
+  { 0x01, "R Unit",   0x01, 1},
+  { 0x02, "BB Unit",  0x01, 1},
+  { 0x03, "Blue",     0x05, 1},
+  { 0x04, "Gray",     0x01, 1},
+  { 0x05, "Red",      0x09, 1},
+  { 0x06, "Orange",   0x05, 1},
+  { 0x07, "Purple",   0x01, 1},
+  { 0x08, "Black",    0x09, 1},
+  { 0x09, "CB-23",    0x01, 1},
+  { 0x0A, "Yellow",   0x05, 1},
+  { 0x0B, "C1-10P",   0x05, 1},
+  { 0x0C, "D-O",      0x05, 1},
+  { 0x0D, "Blue 2",   0x01, 1},
+  { 0x0E, "BD Unit",  0x05, 1},
 };
 
-#define DROID_PERSONALITIES_SIZE  sizeof(droid_personalities)/sizeof(personality_t)
+#define DROID_PERSONALITIES_SIZE sizeof(droid_personalities)/sizeof(personality_t)
+personality_t** emulatable_personalities;
+uint8_t emulatable_personalities_size;
+
+typedef struct {
+  const char* name;
+  esp_bd_addr_t bleaddr;
+} name_by_bleaddr_t;
+
+//
+// Custom Droid Names
+//
+// Use this array to add custom names for individual droids. This is based on bluetooth address.
+// The bluetooth address is included in the scanner results
+name_by_bleaddr_t named_droids[] = {
+// LABEL,      6-BYTE BLEADDR
+  {"Frank",    {0xc2, 0xb1, 0x05, 0x2b, 0x1f, 0x91}}, // "c2:b1:05:2b:1f:91"
+};
+
+#define NAMED_DROID_SIZE  sizeof(named_droids)/sizeof(name_by_bleaddr_t)
 
 typedef struct {
   uint8_t id;
   const char *name;
 } affiliaton_t;
 
-// Droid Affiliation Database
+//
+// Droid Affiliations
+//
+// You could add custom droid affiliations here if you so choose. Custom affiliation values
+// may have unknown consequences with other droids (e.g. beacon not recognized by droids). This is
+// because IT IS ASSUMED that a formula is used to construct and deocde a droid's affiliation value
+// and not following that formula may lead to unexpected behavior (e.g. beacon not recognized by droids)
 affiliaton_t droid_affiliations[] = {
 // ID,    NAME
   { 0x01, "Scoundrel"   },
@@ -321,7 +359,14 @@ typedef struct {
   const char *name;
 } location_t;
 
-// Location Beacon Database
+//
+// Location Beacons
+//
+// The beacons given below are known to exist in Galaxy's Edge (except for 0x00 and 0x04 which
+// have NEVER been observed in Galaxy's Edge.) There's probably not much reason to add 'custom'
+// location beacons as your droid likely won't respond to any value other than the ones listed
+// below. However you could change the names of the beacons to anything you want, especially if you're
+// using these beacons in an environment outside of Galaxy's Edge!
 location_t locations[] = {
 // ID,    NAME
 //{ 0x00, "The Void"      },
@@ -350,7 +395,7 @@ const char* msg_beacon_location_param[NUM_BEACON_PARAMS] = {
 
 // CUSTOMIZATIONS END -- In theory you shouldn't have to edit anything below this line.
 
-#ifdef ARDUINO_ESP32S3_DEV  // this is assuming you're compiling for T-Display-S3 using the "ESP32S3 Dev Module" board.
+#if (defined(ARDUINO_ESP32S3_DEV) || defined(ARDUINO_LILYGO_T_DISPLAY_S3))  // this is assuming you're compiling for T-Display-S3 using the "ESP32S3 Dev Module" or "LilyGo T-Display-S3" board.
   #define TDISPLAYS3
 #endif
 
@@ -593,20 +638,8 @@ void set_droid_beacon(uint8_t personality) {
       Serial.println(msg);
     }
   } else {
-    // if no valid personality was found, select one of the known personalities at random
-    //set_droid_beacon(droid_personalities[ esp_random() % DROID_PERSONALITIES_SIZE ].id);
-
-    // the emulatable check in the previous if statement could, in theory, get us stuck in a recursive loop
-    // or at least blow the stack if we call this function on itself too many times in a row
-    // so just keep picking random personalities until we find one that's emulatable
-
-    while (true) {
-      i = esp_random() % DROID_PERSONALITIES_SIZE;
-      if (droid_personalities[i].emulatable != 0) {
-        break;
-      }
-    }
-    set_droid_beacon(i);
+    // pick a random droid beacon, only pick from emulatable personalities
+    set_droid_beacon(emulatable_personalities[esp_random() % emulatable_personalities_size]->id);
   }
 }
 
@@ -1109,20 +1142,13 @@ void display_droid_beacon_list() {
   uint8_t i, num_items = 0;
   const char** list_items;
 
-  for(i=0; i<DROID_PERSONALITIES_SIZE; i++) {
-    if (droid_personalities[i].emulatable != 0) {
-      num_items++;
-    }
-  }
+  num_items = emulatable_personalities_size;
 
   // create a char* array to pass to display_list()
   list_items = (const char**)malloc(sizeof(char*)*num_items);
 
-  for(i=0; i<num_items; ) {
-    if (droid_personalities[i].emulatable != 0) {
-      list_items[i] = droid_personalities[i].name;
-      i++;
-    }
+  for(i=0; i<num_items; i++) {
+    list_items[i] = emulatable_personalities[i]->name;
   }
 
   // display the menu
@@ -1272,7 +1298,7 @@ void display_scanner_results() {
   char msg[MSG_LEN_MAX];
   uint16_t y = 0;
   uint8_t i;
-  personality_t* p = nullptr;
+  const char* name = nullptr;
   affiliaton_t* a = nullptr;
 
   // display header
@@ -1293,21 +1319,21 @@ void display_scanner_results() {
     tft.setTextColor(DROID_REPORT_PERSONALITY_COLOR);
 
     // look for a known ble address first; this takes precedence over anything else
-    for (i=0; i<DROID_PERSONALITIES_SIZE; i++) {
-      if (droid_personalities[i].bleaddr != nullptr && droids[current_droid].pAdvertisedDevice->getAddress().toString().compare(droid_personalities[i].bleaddr) == 0) {
-        p = &droid_personalities[i];
+    for (i=0; i<NAMED_DROID_SIZE; i++) {
+      if (memcmp(named_droids[i].bleaddr, droids[current_droid].pAdvertisedDevice->getAddress().getNative(), ESP_BD_ADDR_LEN) == 0) {
+        name = named_droids[i].name;
         break;
       }
     }
 
     // if a ble address match was not found, grab the details of the droid based on ID
-    if (p == nullptr) {
-      p = get_droid_personality(droids[current_droid].chipid);
+    if (name == nullptr) {
+      name = get_droid_personality(droids[current_droid].chipid)->name;
     }
 
     // print personality name
-    if (p != nullptr) {
-      tft.drawString(p->name, tft.width()/2, y);
+    if (name != nullptr) {
+      tft.drawString(name, tft.width()/2, y);
     } else {
       snprintf(msg, MSG_LEN_MAX, msg_unknown_int, droids[current_droid].chipid);
       tft.drawString(msg, tft.width()/2, y);
@@ -1478,7 +1504,7 @@ void display_volume() {
 
 void display_beacon_expert() {
   char msg[MSG_LEN_MAX];
-  uint8_t i, j;
+  uint8_t i;
   personality_t* p = nullptr;
   affiliaton_t* a = nullptr;
   location_t* l = nullptr;
@@ -1723,7 +1749,7 @@ void button1(button_press_t press_type) {
 
   static uint32_t last_time_btn1 = 0;
   static uint32_t last_time_btn1_down = 0;
-  uint8_t i, j;
+  uint8_t i;
 
   Serial.println("Button1 Press");
 
@@ -1750,14 +1776,10 @@ void button1(button_press_t press_type) {
         // in its respective beacon list. this is being done so when you go back (long button 2 press)
         // you'll be brought to the element in the beacon list where the randomly selected beacon is
         if (beacon.type == DROID) {
-          j = 0;
-          for(i=0; i<DROID_PERSONALITIES_SIZE; i++) {
-            if (droid_personalities[i].emulatable != 0) {
-              if (droid_personalities[i].id == beacon.setting[0]) {
-                selected_item = j;
-                break;
-              }
-              j++;
+          for(i=0; i<emulatable_personalities_size; i++) {
+            if (emulatable_personalities[i]->id == beacon.setting[0]) {
+              selected_item = i;
+              break;
             }
           }
         } else {
@@ -1789,16 +1811,7 @@ void button1(button_press_t press_type) {
       break;
 
     case BEACON_DROID_LIST:
-      j = 0;
-      for(i=0; i<DROID_PERSONALITIES_SIZE; i++) {
-        if (droid_personalities[i].emulatable != 0) {
-          if (droid_personalities[i].id == beacon.setting[0] && selected_item == j) {
-            break;
-          }
-          j++;
-        }
-      }
-      set_droid_beacon(j);
+      set_droid_beacon(emulatable_personalities[selected_item]->id);
       state = BEACON_ACTIVATE;
       tft_update = true;
       break;
@@ -1976,7 +1989,7 @@ void button2(button_press_t press_type) {
 
   static uint32_t last_time_btn2 = 0;
   static uint32_t last_time_btn2_down = 0;
-  uint8_t i, j;
+  uint8_t i;
 
   Serial.println("Button2 Press");
 
@@ -2033,23 +2046,7 @@ void button2(button_press_t press_type) {
         selected_item = 1;
       } else {
         selected_item++;
-
-        // don't like counting this struct EVERY TIME a button is pressed;
-        // need to find a way to figure out sorting through the emulatable and non-emulatable
-        // beacons more cleanly; maybe a second struct array of only emulatable beacons
-        // that is generated once at the start?
-        //
-        // or do i separate custom and emulatable beacons?
-        // 
-        // this should work for now, just... ugly.
-        j = 0;
-        for(i=0; i<DROID_PERSONALITIES_SIZE; i++) {
-          if (droid_personalities[i].emulatable != 0) {
-            j++;
-          }
-        }
-
-        if (selected_item >= j) {
+        if (selected_item >= emulatable_personalities_size) {
           selected_item = 0;
         }
       }
@@ -2271,6 +2268,28 @@ void setup() {
   // initialize the droid array
   for (i = 0; i < MAX_DROIDS; i++) {
     droids[i].pAdvertisedDevice = nullptr;
+  }
+
+  // populate emulatable_personalities array
+  emulatable_personalities_size = 0;
+
+  // how many personalities are available for emulation?
+  for (i=0; i<DROID_PERSONALITIES_SIZE; i++) {
+    if (droid_personalities[i].emulatable != 0) {
+      emulatable_personalities_size++;
+    }
+  }
+
+  // allocate memory for the pointers
+  emulatable_personalities = (personality_t**)malloc(sizeof(personality_t*) * emulatable_personalities_size);
+
+  // assign pointers to members of droid_personalities[]
+  emulatable_personalities_size = 0;
+  for (i=0; i<DROID_PERSONALITIES_SIZE; i++) {
+    if (droid_personalities[i].emulatable != 0) {
+      emulatable_personalities[emulatable_personalities_size] = &droid_personalities[i];
+      emulatable_personalities_size++;
+    }
   }
 
   // just so there's no garbage in there if it gets used before being initilized.
