@@ -82,15 +82,6 @@
  *     https://github.com/Bodmer/TFT_eSPI/blob/master/examples/Generic/TFT_Button_Label_Datum/TFT_Button_Label_Datum.ino
  *   
  * TODO
- *   beacon:
- *     allow for beacon customization
- *       choose between droid and location beacons
- *       droid beacon:
- *         set affiliation
- *         set personality chip
- *       location beacon:
- *         set location
- *         set minimum reaction interval 
  *   scanner:
  *     search for specific droid/location
  *        constant scan; alert when encountering the specified beacon
@@ -104,9 +95,6 @@
  *        control LEDs (?)
  *        control motors (is this a GOOD idea? probably not...)
  *        other ??
- *   internationalization/localization; 
- *     put all static strings into a location (an array, a bunch of #defines) that allows for easier
- *     translation to other languages without having to sift through all the code
  *   consider a method for setting font sizes based on screen size
  *
  * HISTORY
@@ -286,7 +274,7 @@ typedef struct {
   uint8_t id;           // personality ID, unique for each personality
   const char *name;     // the personality name; displayed on screen
   uint8_t affiliation;  // the group affiliation (see droid_affiliations[] for relevant values); only used when emulating droid beacons
-  uint8_t emulatable;   // 1 = available for toolbox to emulate, any other value = not emulateable
+  uint8_t emulatable;   // 0 = will not be included in list of droid beacons available for emulation
   const char *bleaddr;  // nullptr = no address; only used to identify an individual droid in scan results
 } personality_t;
 
@@ -308,7 +296,7 @@ personality_t droid_personalities[] = {
   { 0x0C, "D-O",      0x05, 1, nullptr},
   { 0x0D, "Blue 2",   0x01, 1, nullptr},
   { 0x0E, "BD Unit",  0x05, 1, nullptr},
-  { 0x00, "Frank",    0x00, 0, "c2:b1:05:2b:1f:91"},
+  { 0x00, "Frank",    0x00, 0, "c2:b1:05:2b:1f:91"},    // no id or affiliation necessary if bleaddr is set and emulatable is set to 0
 };
 
 #define DROID_PERSONALITIES_SIZE  sizeof(droid_personalities)/sizeof(personality_t)
@@ -1306,8 +1294,7 @@ void display_scanner_results() {
 
     // look for a known ble address first; this takes precedence over anything else
     for (i=0; i<DROID_PERSONALITIES_SIZE; i++) {
-      if (droids[current_droid].pAdvertisedDevice->getAddress().toString().compare(droid_personalities[i].bleaddr) == 0) {
-        Serial.println("BLEADDR MATCH")
+      if (droid_personalities[i].bleaddr != nullptr && droids[current_droid].pAdvertisedDevice->getAddress().toString().compare(droid_personalities[i].bleaddr) == 0) {
         p = &droid_personalities[i];
         break;
       }
@@ -1316,12 +1303,14 @@ void display_scanner_results() {
     // if a ble address match was not found, grab the details of the droid based on ID
     if (p == nullptr) {
       p = get_droid_personality(droids[current_droid].chipid);
-      if (p != nullptr) {
-        tft.drawString(p->name, tft.width()/2, y);
-      } else {
-        snprintf(msg, MSG_LEN_MAX, msg_unknown_int, droids[current_droid].chipid);
-        tft.drawString(msg, tft.width()/2, y);
-      }
+    }
+
+    // print personality name
+    if (p != nullptr) {
+      tft.drawString(p->name, tft.width()/2, y);
+    } else {
+      snprintf(msg, MSG_LEN_MAX, msg_unknown_int, droids[current_droid].chipid);
+      tft.drawString(msg, tft.width()/2, y);
     }
 
     // print droid affiliation
