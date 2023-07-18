@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.60 : ruthsarian@gmail.com
+/* Droid Toolbox v0.61 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * NOTE: your droid remote MUST BE OFF for this to work!
@@ -110,6 +110,7 @@
  *   consider a method for setting font sizes based on screen size
  *
  * HISTORY
+ *   v0.61 : TOOD: custom chip IDs, custom BLEADDR names
  *   v0.60 : added ability to select which beacon the droid toolbox will produce
  *           expert beacon mode allows finer control over the beacon; i probably should have hidden it behind a key combination...
  *           added global beacon variable to store the details of the beacon that will be produced
@@ -160,7 +161,7 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.60"                 // the version displayed on the splash screen at the lower right
+#define MSG_VERSION                         "v0.61 ALPHA"                 // the version displayed on the splash screen at the lower right
 
 #define DEFAULT_TEXT_SIZE                   2                       // a generic size used throughout 
 #define DEFAULT_TEXT_COLOR                  TFT_DARKGREY            // e.g. 'turn off your droid remote'
@@ -235,7 +236,6 @@
 #define SLEEP_AFTER 5 * 60 * 1000  // how many milliseconds of inactivity before going to sleep/hibernation
 
 // static strings used throughout DroidToolbox
-
 const char ble_adv_name[]               = "DROIDTLBX";              // this is the name the toolbox's beacon will appear as, keep to 10 characters or less
 const char msg_version[]                = MSG_VERSION;
 const char msg_title[]                  = "Droid Toolbox";
@@ -282,44 +282,71 @@ const char msg_vol_inc[]                = "VOL+";
 const char msg_vol_dec[]                = "VOL-";
 const char msg_set_vol[]                = "SET VOLUME";
 
-// the index of a personality name in this array should correspond to that personality's ID
-// not following this will result in the wrong names being displayed
-const char* msg_droid_personalities[] = {
-  "00",       // 0x00, should never encounter this
-  "R Unit",   // 0x01
-  "BB Unit",  // 0x02
-  "Blue",     // 0x03
-  "Gray",     // 0x04
-  "Red",      // 0x05
-  "Orange",   // 0x06
-  "Purple",   // 0x07
-  "Black",    // 0x08
-  "CB-23",    // 0x09, aka "Red 2"
-  "Yellow",   // 0x0A
-  "C1-10P",   // 0x0B
-  "D-O",      // 0x0C, 
-  "Blue 2",   // 0x0D
-  "BD Unit"   // 0x0E, BD is a Droid Depot droid at heart!
+typedef struct {
+  uint8_t id;           // personality ID, unique for each personality
+  const char *name;     // the personality name; displayed on screen
+  uint8_t affiliation;  // the group affiliation (see droid_affiliations[] for relevant values); only used when emulating droid beacons
+  uint8_t emulatable;   // 1 = available for toolbox to emulate, any other value = not emulateable
+  const char *bleaddr;  // nullptr = no address; only used to identify an individual droid in scan results
+} personality_t;
+
+// Droid Personality Database
+// BLEADDR can be used to set names for individual droids based on their bluetooth address.
+personality_t droid_personalities[] = {
+//  ID,   NAME,       AFF,  E, BLEADDR
+  { 0x01, "R Unit",   0x01, 1, nullptr},
+  { 0x02, "BB Unit",  0x01, 1, nullptr},
+  { 0x03, "Blue",     0x05, 1, nullptr},
+  { 0x04, "Gray",     0x01, 1, nullptr},
+  { 0x05, "Red",      0x09, 1, nullptr},
+  { 0x06, "Orange",   0x05, 1, nullptr},
+  { 0x07, "Purple",   0x01, 1, nullptr},
+  { 0x08, "Black",    0x09, 1, nullptr},
+  { 0x09, "CB-23",    0x01, 1, nullptr},
+  { 0x0A, "Yellow",   0x05, 1, nullptr},
+  { 0x0B, "C1-10P",   0x05, 1, nullptr},
+  { 0x0C, "D-O",      0x05, 1, nullptr},
+  { 0x0D, "Blue 2",   0x01, 1, nullptr},
+  { 0x0E, "BD Unit",  0x05, 1, nullptr},
+  { 0x00, "Frank",    0x00, 0, "c2:b1:05:2b:1f:91"},
 };
 
-// the index of a location name in this array should correspond to that location's beacon ID
-// not following this will result in the wrong names being displayed
-const char* msg_locations[] = {
-  "The Void",         // 0x00, should never encounter this
-  "Marketplace",      // 0x01
-  "Behind Depot",     // 0x02
-  "Resistance",       // 0x03
-  "Unknown",          // 0x04, have never found this beacon inside GE
-  "Droid Depot",      // 0x05
-  "Dok Ondar's",      // 0x06
-  "First Order"       // 0x07
+#define DROID_PERSONALITIES_SIZE  sizeof(droid_personalities)/sizeof(personality_t)
+
+typedef struct {
+  uint8_t id;
+  const char *name;
+} affiliaton_t;
+
+// Droid Affiliation Database
+affiliaton_t droid_affiliations[] = {
+// ID,    NAME
+  { 0x01, "Scoundrel"   },
+  { 0x05, "Resistance"  },
+  { 0x09, "First Order" },
 };
 
-const char* msg_droid_affiliation[] = {
-  "Scoundrel",    // 0x01
-  "Resistance",   // 0x05
-  "First Order"   // 0x09
+#define DROID_AFFILIATIONS_SIZE  sizeof(droid_affiliations)/sizeof(affiliaton_t)
+
+typedef struct {
+  uint8_t id;
+  const char *name;
+} location_t;
+
+// Location Beacon Database
+location_t locations[] = {
+// ID,    NAME
+//{ 0x00, "The Void"      },
+  { 0x01, "Marketplace"   },
+  { 0x02, "Behind Depot"  },
+  { 0x03, "Resistance"    },
+//{ 0x04, "Unknown"       },
+  { 0x05, "Droid Depot"   },
+  { 0x06, "Dok Ondar's"   },
+  { 0x07, "First Order"   },
 };
+
+#define LOCATIONS_SIZE  sizeof(locations)/sizeof(location_t)
 
 // next two arrays are labels for the expert beacon screen
 const char* msg_beacon_droid_param[NUM_BEACON_PARAMS] = {
@@ -334,29 +361,6 @@ const char* msg_beacon_location_param[NUM_BEACON_PARAMS] = {
 };
 
 // CUSTOMIZATIONS END -- In theory you shouldn't have to edit anything below this line.
-
-#define DROID_ID_R_UNIT           0x01  // these values should match the ID of the corresponding personality
-#define DROID_ID_BB_UNIT          0x02  // these values should ALSO match the index value of the 
-#define DROID_ID_BLUE             0x03  // corresponding personality in the msg_droid_personalities[] array
-#define DROID_ID_GRAY             0x04
-#define DROID_ID_RED              0x05
-#define DROID_ID_ORANGE           0x06
-#define DROID_ID_PURPLE           0x07
-#define DROID_ID_BLACK            0x08
-#define DROID_ID_CB_23            0x09
-#define DROID_ID_YELLOW           0x0A
-#define DROID_ID_C1_10P           0x0B
-#define DROID_ID_D_O              0x0C
-#define DROID_ID_BLUE_2           0x0D
-#define DROID_ID_BD_UNIT          0x0E
-
-#define LOCATION_ID_MARKET        0x01  // these values should match the ID of the corresponding location
-#define LOCATION_ID_BEHIND_DEPOT  0x02  // these values should ALSO match the index value of the 
-#define LOCATION_ID_RESISTANCE    0x03  // corresponding location in the msg_locations[] array
-#define LOCATION_ID_UNKNOWN       0x04
-#define LOCATION_ID_DROID_DEPOT   0x05
-#define LOCATION_ID_DOK_ONDAR     0x06
-#define LOCATION_ID_FIRST_ORDER   0x07
 
 #ifdef ARDUINO_ESP32S3_DEV  // this is assuming you're compiling for T-Display-S3 using the "ESP32S3 Dev Module" board.
   #define TDISPLAYS3
@@ -397,7 +401,7 @@ BLEAdvertising* pAdvertising = nullptr;
 BLEAdvertisementData oScanResponseData = BLEAdvertisementData();
 BLEAdvertisementData* pAdvertisementData = nullptr;  // must be pointer so i can delete class then recreate it every time beacon changes
                                                      // should i be using smart pointers?
-
+ 
 typedef struct {
   uint8_t chipid;
   uint8_t affid;
@@ -434,7 +438,7 @@ uint8_t payload[PAYLOAD_SIZE];
 
 typedef enum {
   DROID,
-  LOCATION
+  LOCATION,
 } beacon_type_t;
 
 typedef struct {
@@ -503,38 +507,6 @@ menu_item_t connected_menu[] = {
   { VOLUME_UP,   msg_volume },
 };
 
-typedef struct {
-  uint8_t id;
-  const char* label;
-} beacon_item_t;
-
-beacon_item_t droid_beacons[] = {
-  { DROID_ID_R_UNIT,  msg_droid_personalities[DROID_ID_R_UNIT] },
-  { DROID_ID_BB_UNIT, msg_droid_personalities[DROID_ID_BB_UNIT] },
-  { DROID_ID_BLUE,    msg_droid_personalities[DROID_ID_BLUE] },
-  { DROID_ID_GRAY,    msg_droid_personalities[DROID_ID_GRAY] },
-  { DROID_ID_RED,     msg_droid_personalities[DROID_ID_RED] },
-  { DROID_ID_ORANGE,  msg_droid_personalities[DROID_ID_ORANGE] },
-  { DROID_ID_PURPLE,  msg_droid_personalities[DROID_ID_PURPLE] },
-  { DROID_ID_BLACK,   msg_droid_personalities[DROID_ID_BLACK] },
-  { DROID_ID_CB_23,   msg_droid_personalities[DROID_ID_CB_23] },
-  { DROID_ID_YELLOW,  msg_droid_personalities[DROID_ID_YELLOW] },
-  { DROID_ID_C1_10P,  msg_droid_personalities[DROID_ID_C1_10P] },
-  { DROID_ID_D_O,     msg_droid_personalities[DROID_ID_D_O] },
-  { DROID_ID_BLUE_2,  msg_droid_personalities[DROID_ID_BLUE_2] },
-  { DROID_ID_BD_UNIT, msg_droid_personalities[DROID_ID_BD_UNIT] },
-};
-
-beacon_item_t location_beacons[] = {
-  { LOCATION_ID_MARKET,         msg_locations[LOCATION_ID_MARKET] },
-  { LOCATION_ID_BEHIND_DEPOT,   msg_locations[LOCATION_ID_BEHIND_DEPOT] },
-  { LOCATION_ID_RESISTANCE,     msg_locations[LOCATION_ID_RESISTANCE] },
-  { LOCATION_ID_UNKNOWN,        msg_locations[LOCATION_ID_UNKNOWN] },
-  { LOCATION_ID_DROID_DEPOT,    msg_locations[LOCATION_ID_DROID_DEPOT] },
-  { LOCATION_ID_DOK_ONDAR,      msg_locations[LOCATION_ID_DOK_ONDAR] },
-  { LOCATION_ID_FIRST_ORDER,    msg_locations[LOCATION_ID_FIRST_ORDER] },
-};
-
 TFT_eSPI tft = TFT_eSPI();      // display interface
 bool tft_update = true;         // flag to inidcate display needs to be updated
 
@@ -550,6 +522,36 @@ tft_list_options_t list_options;
 int8_t droid_volume = 100;      // there is no way to 'read' the current volume setting, so we'll keep track with a variable and assume it starts at full (100) volume
 uint8_t selected_item = 0;      // keep track of the currently selected option when displaying menus, options, etc.
 system_state_t state = SPLASH;  // track the current state of the toolbox
+
+personality_t* get_droid_personality(uint8_t id) {
+  uint8_t i;
+  for (i=0; i<DROID_PERSONALITIES_SIZE; i++) {
+    if (droid_personalities[i].id == id) {
+      return(&droid_personalities[i]);
+    }
+  }
+  return nullptr;
+}
+
+affiliaton_t* get_droid_affiliation(uint8_t id) {
+  uint8_t i;
+  for (i=0; i<DROID_AFFILIATIONS_SIZE; i++) {
+    if (droid_affiliations[i].id == id) {
+      return(&droid_affiliations[i]);
+    }
+  }
+  return nullptr;
+}
+
+location_t* get_location(uint8_t id) {
+  uint8_t i;
+  for (i=0; i<LOCATIONS_SIZE; i++) {
+    if (locations[i].id == id) {
+      return(&locations[i]);
+    }
+  }
+  return nullptr;
+}
 
 void init_advertisement_data() {
   if (pAdvertisementData != nullptr) {
@@ -569,78 +571,92 @@ void load_payload_droid_beacon_data() {
 
 // populate beacon struct with a droid beacon
 void set_droid_beacon(uint8_t personality) {
+  uint8_t i;
+  personality_t* p;
+  affiliaton_t* a; 
+  char msg[MSG_LEN_MAX];
 
-  beacon.type = DROID;
-  Serial.println("Creating a DROID beacon.");
+  // get the personality
+  p = get_droid_personality(personality);
 
-  // make sure the personality chip ID passed is a valid one
-  if (personality > 0 && personality <= (sizeof(msg_droid_personalities) / sizeof(char*))) {
-    beacon.setting[0] = personality;
+  // do we have a valid personality?
+  if (p != nullptr && p->emulatable != 0) {
 
-  // otherwise generate a random beacon
+    // create a droid beacon
+    Serial.println("Creating a DROID beacon.");
+    beacon.type = DROID;
+
+    // populate the beacon values
+    beacon.setting[0] = p->id;
+    beacon.setting[1] = p->affiliation;
+    beacon.setting[2] = 1;
+
+    // output personality name to serial
+    Serial.print("  Personality: ");
+    Serial.println(p->name);
+
+    // output affiliation to serial
+    Serial.print("  Affiliation: ");
+    a = get_droid_affiliation(p->affiliation);
+    if (a != nullptr) {
+      Serial.println(a->name);
+    } else {
+      snprintf(msg, MSG_LEN_MAX, msg_unknown_int, p->affiliation);
+      Serial.println(msg);
+    }
   } else {
-    beacon.setting[0] = (esp_random() % ((sizeof(msg_droid_personalities) / sizeof(char*)) - 1)) + 1;
+    // if no valid personality was found, select one of the known personalities at random
+    //set_droid_beacon(droid_personalities[ esp_random() % DROID_PERSONALITIES_SIZE ].id);
+
+    // the emulatable check in the previous if statement could, in theory, get us stuck in a recursive loop
+    // or at least blow the stack if we call this function on itself too many times in a row
+    // so just keep picking random personalities until we find one that's emulatable
+
+    while (true) {
+      i = esp_random() % DROID_PERSONALITIES_SIZE;
+      if (droid_personalities[i].emulatable != 0) {
+        break;
+      }
+    }
+    set_droid_beacon(i);
   }
-  Serial.print("  Personality: ");
-  Serial.println(msg_droid_personalities[beacon.setting[0]]);
-
-  // set affiliation based on personality
-  Serial.print("  Affiliation: ");
-  switch(beacon.setting[0]) {
-
-    // resistance
-    case 3:
-    case 6:
-    case 10:
-    case 11:
-    case 12:
-    case 14:
-      beacon.setting[1] = 5;
-      Serial.println("Resistance");
-      break;
-
-    // first order
-    case 5:
-    case 8:
-      beacon.setting[1] = 9;
-      Serial.println("First Order");
-      break;
-
-    // scoundrel
-    default:
-      beacon.setting[1] = 1;
-      Serial.println("Scoundrel");
-      break;
-  }
-
-  // set paired to true
-  beacon.setting[2] = 1;
 }
 
 void set_location_beacon(uint8_t location) {
-  beacon.type = LOCATION;
-  Serial.println("Creating a LOCATION beacon.");
+  uint8_t i;
+  location_t* l;
 
-  // set location
-  if (location > 0 && location <= (sizeof(msg_locations) / sizeof(char*))) {
-    beacon.setting[0] = location;
+  // get the location
+  l = get_location(location);
+
+  // do we have a valid location?
+  if (l != nullptr) {
+
+    // create a location beacon
+    beacon.type = LOCATION;
+    Serial.println("Creating a LOCATION beacon.");
+
+    // set the bacon location value
+    beacon.setting[0] = l->id;
+    Serial.print("  Location: ");
+    Serial.println(l->name);
+
+    // set reaction interval (in minutes), could go as high as 19, but keeping it low on purpose
+    //beacon.setting[1] = (esp_random() % 3) + 1;
+    beacon.setting[1] = 2;
+    Serial.print("  Interval: ");
+    Serial.println(beacon.setting[1]);
+
+    // set minimum RSSI for droid to react; while this value is stored as an unsigned value, think of it as a negative value in dBm; e.g. 38 = -38dBm
+    beacon.setting[2] = 38;
+    Serial.print("  Minimum RSSI: -");
+    Serial.print(beacon.setting[2]);
+    Serial.println("dBm");
   } else {
-    beacon.setting[0] = (esp_random() % ((sizeof(msg_locations) / sizeof(char*)) - 1)) + 1;
+
+    // if no valid location was found, select one of the known locations at random
+    set_location_beacon(locations[esp_random() % LOCATIONS_SIZE].id);
   }
-  Serial.print("  Location: ");
-  Serial.println(msg_locations[beacon.setting[0]]);
-
-  // set reaction interval (in minutes), could go as high as 19, but keeping it low on purpose
-  //beacon.setting[1] = (esp_random() % 3) + 1;
-  beacon.setting[1] = 2;
-  Serial.print("  Interval: ");
-  Serial.println(beacon.setting[1]);
-
-  // set minimum RSSI for droid to react; while this value is stored as an unsigned value, think of it as a negative value in dBm; e.g. 38 = -38dBm
-  beacon.setting[2] = 38;
-  Serial.print("  Minimum RSSI: -");
-  Serial.print(beacon.setting[2]);
-  Serial.println("dBm");
 }
 
 // populate the global beacon variable with random(ish) values
@@ -1035,9 +1051,6 @@ void display_list(const char **items, uint8_t num_items) {
   }
 }
 
-// TODO: display_captioned_menu() and display_beacon_menu() duplicate a lot of code
-//       find a way to.. not do that
-
 void display_captioned_menu(const char* caption, menu_item_t* menu_items, uint8_t num_items) {
   uint8_t h, i;
 
@@ -1077,10 +1090,8 @@ void display_captioned_menu(const char* caption, menu_item_t* menu_items, uint8_
   free(list_items);
 }
 
-void display_beacon_menu(const char* caption, beacon_item_t* menu_items, uint8_t num_items) {
+void display_beacon_menu(const char* caption, const char** list_items, uint8_t num_items) {
   uint8_t h, i;
-
-  const char** list_items;
 
   // set size, color, and datum
   tft.setTextSize(BEACON_SELECT_CAPTION_TEXT_SIZE);
@@ -1101,14 +1112,54 @@ void display_beacon_menu(const char* caption, beacon_item_t* menu_items, uint8_t
   list_options.selected_border_color = BEACON_SELECT_SELECTED_BORDER_COLOR;
   list_options.text_padding = BEACON_SELECT_TEXT_PADDING;
 
+  // display the menu
+  display_list(list_items, num_items);
+}
+
+void display_droid_beacon_list() {
+
+  uint8_t i, num_items = 0;
+  const char** list_items;
+
+  for(i=0; i<DROID_PERSONALITIES_SIZE; i++) {
+    if (droid_personalities[i].emulatable != 0) {
+      num_items++;
+    }
+  }
+
   // create a char* array to pass to display_list()
   list_items = (const char**)malloc(sizeof(char*)*num_items);
-  for(i=0;i<num_items;i++) {
-    list_items[i] = menu_items[i].label;
+
+  for(i=0; i<num_items; ) {
+    if (droid_personalities[i].emulatable != 0) {
+      list_items[i] = droid_personalities[i].name;
+      i++;
+    }
   }
 
   // display the menu
-  display_list(list_items, num_items);
+  display_beacon_menu(msg_select_beacon, list_items, num_items);
+
+  // free the malloc'd memory
+  free(list_items);
+}
+
+// generate a list of locations to choose from and display them in a menu
+void display_location_beacon_list() {
+  uint8_t i, num_items;
+  const char** list_items;
+
+  num_items = LOCATIONS_SIZE;
+
+  // create a char* array to pass to display_list()
+  list_items = (const char**)malloc(sizeof(char*)*num_items);
+
+  for(i=0; i<num_items; i++) {
+    list_items[i] = locations[i].name;
+  }
+
+  // display the menu
+  display_beacon_menu(msg_select_beacon, list_items, num_items);
 
   // free the malloc'd memory
   free(list_items);
@@ -1118,6 +1169,8 @@ void display_beacon_control() {
   uint16_t y, content_height;
   uint8_t gap, bfs;
   char msg[MSG_LEN_MAX];
+  personality_t *p;
+  location_t* l;
 
   // line 1: beacon type
   // line 2: beacon id
@@ -1162,9 +1215,19 @@ void display_beacon_control() {
   tft.setTextSize(BEACON_CONTROL_TEXT_SIZE);
   tft.setTextColor(BEACON_CONTROL_ID_COLOR);
   if (beacon.type == DROID) {
-    snprintf(msg, MSG_LEN_MAX, "%s", msg_droid_personalities[beacon.setting[0]]);
+    p = get_droid_personality(beacon.setting[0]);
+    if (p != nullptr) {
+      snprintf(msg, MSG_LEN_MAX, "%s", p->name);
+    } else {
+      snprintf(msg, MSG_LEN_MAX, msg_unknown_int, beacon.setting[0]);
+    }
   } else {
-    snprintf(msg, MSG_LEN_MAX, "%s", msg_locations[beacon.setting[0]]);
+    l = get_location(beacon.setting[0]);
+    if (l != nullptr) {
+      snprintf(msg, MSG_LEN_MAX, "%s", l->name);
+    } else {
+      snprintf(msg, MSG_LEN_MAX, msg_unknown_int, beacon.setting[0]);
+    }
   }
   tft.drawString(msg, tft.getViewportWidth()/2, y);
 
@@ -1221,6 +1284,8 @@ void display_scanner_results() {
   char msg[MSG_LEN_MAX];
   uint16_t y = 0;
   uint8_t i;
+  personality_t* p = nullptr;
+  affiliaton_t* a = nullptr;
 
   // display header
   tft.setTextSize(DROID_REPORT_TEXT_SIZE);
@@ -1238,11 +1303,25 @@ void display_scanner_results() {
     // print droid personality
     tft.setTextSize(DROID_REPORT_TEXT_SIZE + 1);
     tft.setTextColor(DROID_REPORT_PERSONALITY_COLOR);
-    if (droids[current_droid].chipid < (sizeof(msg_droid_personalities) / sizeof(char*))) {
-      tft.drawString(msg_droid_personalities[droids[current_droid].chipid], tft.width()/2, y);
-    } else {
-      snprintf(msg, MSG_LEN_MAX, msg_unknown_int, droids[current_droid].chipid);
-      tft.drawString(msg, tft.width()/2, y);
+
+    // look for a known ble address first; this takes precedence over anything else
+    for (i=0; i<DROID_PERSONALITIES_SIZE; i++) {
+      if (droids[current_droid].pAdvertisedDevice->getAddress().toString().compare(droid_personalities[i].bleaddr) == 0) {
+        Serial.println("BLEADDR MATCH")
+        p = &droid_personalities[i];
+        break;
+      }
+    }
+
+    // if a ble address match was not found, grab the details of the droid based on ID
+    if (p == nullptr) {
+      p = get_droid_personality(droids[current_droid].chipid);
+      if (p != nullptr) {
+        tft.drawString(p->name, tft.width()/2, y);
+      } else {
+        snprintf(msg, MSG_LEN_MAX, msg_unknown_int, droids[current_droid].chipid);
+        tft.drawString(msg, tft.width()/2, y);
+      }
     }
 
     // print droid affiliation
@@ -1251,10 +1330,9 @@ void display_scanner_results() {
     tft.setTextSize(DROID_REPORT_TEXT_SIZE);
 
     // stock affiliation
-    if ( droids[current_droid].affid == 1 || droids[current_droid].affid == 5 || droids[current_droid].affid == 9) {
-      tft.drawString(msg_droid_affiliation[droids[current_droid].affid >> 2], tft.width()/2, y);
-
-    // non-stock affiliation
+    a = get_droid_affiliation(droids[current_droid].affid);
+    if (a != nullptr) {
+      tft.drawString(a->name, tft.width()/2, y);
     } else {
       snprintf(msg, MSG_LEN_MAX, msg_unknown_int, droids[current_droid].affid);
       tft.drawString(msg, tft.width()/2, y);
@@ -1412,6 +1490,9 @@ void display_volume() {
 void display_beacon_expert() {
   char msg[MSG_LEN_MAX];
   uint8_t i, j;
+  personality_t* p = nullptr;
+  affiliaton_t* a = nullptr;
+  location_t* l = nullptr;
 
   /*
   // figure out the widest label so all the labels can be right-aligned; don't need to do this but...
@@ -1473,21 +1554,20 @@ void display_beacon_expert() {
 
       // personality
       if (i==0) {
-          for (j=0; j<sizeof(droid_beacons)/sizeof(beacon_item_t); j++) {
-            if (droid_beacons[j].id == beacon.setting[i]) {
-              snprintf(msg, MSG_LEN_MAX, "%s", droid_beacons[j].label);
-              break;
-            }
-          }
+        p = get_droid_personality(beacon.setting[i]);
+        if (p != nullptr) {
+          snprintf(msg, MSG_LEN_MAX, "%s", p->name);
+        } else {
+          snprintf(msg, MSG_LEN_MAX, msg_unknown_int, beacon.setting[i]);
+        }
 
       // affiliation
       } else if (i==1) {
-        switch(beacon.setting[i]) {
-          case 1:
-          case 5:
-          case 9:
-            snprintf(msg, MSG_LEN_MAX, "%s", msg_droid_affiliation[beacon.setting[i] >> 2]);
-            break;
+        a = get_droid_affiliation(beacon.setting[i]);
+        if (a != nullptr) {
+          snprintf(msg, MSG_LEN_MAX, "%s", a->name);
+        } else {
+          snprintf(msg, MSG_LEN_MAX, msg_unknown_int, beacon.setting[i]);
         }
 
       // paired
@@ -1504,12 +1584,12 @@ void display_beacon_expert() {
 
       // location
       if (i==0) {
-          for (j=0; j<sizeof(location_beacons)/sizeof(beacon_item_t); j++) {
-            if (location_beacons[j].id == beacon.setting[i]) {
-              snprintf(msg, MSG_LEN_MAX, "%s", location_beacons[j].label);
-              break;
-            }
-          }
+        l = get_location(beacon.setting[i]);
+        if (l != nullptr) {
+          snprintf(msg, MSG_LEN_MAX, "%s", l->name);
+        } else {
+          snprintf(msg, MSG_LEN_MAX, msg_unknown_int, beacon.setting[i]);
+        }
 
       // reaction interval (in minutes)
       } else if (i==1) {
@@ -1626,11 +1706,11 @@ void update_display() {
       break;
 
     case BEACON_DROID_LIST:      // display_droid_beacon_list()
-      display_beacon_menu(msg_select_beacon, droid_beacons, sizeof(droid_beacons) / sizeof(beacon_item_t));
+      display_droid_beacon_list();
       break;
 
     case BEACON_LOCATION_LIST:   // display_location_beacon_list()
-      display_beacon_menu(msg_select_beacon, location_beacons, sizeof(location_beacons) / sizeof(beacon_item_t));
+      display_location_beacon_list();
       break;
 
     case BEACON_TYPE_MENU:       // display_beacon_type_menu()
@@ -1654,7 +1734,9 @@ void button1(button_press_t press_type) {
 
   static uint32_t last_time_btn1 = 0;
   static uint32_t last_time_btn1_down = 0;
-  uint8_t i;
+  uint8_t i, j;
+
+  Serial.println("Button1 Press");
 
   switch (state) {
     case SPLASH:
@@ -1675,18 +1757,23 @@ void button1(button_press_t press_type) {
         set_random_beacon();
 
         // the following if/else block is setting selected_item to the value of the randomly selected beacon
+        //
         // in its respective beacon list. this is being done so when you go back (long button 2 press)
         // you'll be brought to the element in the beacon list where the randomly selected beacon is
         if (beacon.type == DROID) {
-          for(i=0; i<sizeof(droid_beacons) / sizeof(beacon_item_t); i++) {
-            if (droid_beacons[i].id == beacon.setting[0]) {
-              selected_item = i;
-              break;
+          j = 0;
+          for(i=0; i<DROID_PERSONALITIES_SIZE; i++) {
+            if (droid_personalities[i].emulatable != 0) {
+              if (droid_personalities[i].id == beacon.setting[0]) {
+                selected_item = j;
+                break;
+              }
+              j++;
             }
           }
         } else {
-          for(i=0; i<sizeof(location_beacons) / sizeof(beacon_item_t); i++) {
-            if (location_beacons[i].id == beacon.setting[0]) {
+          for(i=0; i<LOCATIONS_SIZE; i++) {
+            if (locations[i].id == beacon.setting[0]) {
               selected_item = i;
               break;
             }
@@ -1707,13 +1794,22 @@ void button1(button_press_t press_type) {
       break;
 
     case BEACON_LOCATION_LIST:
-      set_location_beacon(location_beacons[selected_item].id);
+      set_location_beacon(locations[selected_item].id);
       state = BEACON_ACTIVATE;
       tft_update = true;
       break;
 
     case BEACON_DROID_LIST:
-      set_droid_beacon(droid_beacons[selected_item].id);
+      j = 0;
+      for(i=0; i<DROID_PERSONALITIES_SIZE; i++) {
+        if (droid_personalities[i].emulatable != 0) {
+          if (droid_personalities[i].id == beacon.setting[0] && selected_item == j) {
+            break;
+          }
+          j++;
+        }
+      }
+      set_droid_beacon(j);
       state = BEACON_ACTIVATE;
       tft_update = true;
       break;
@@ -1891,6 +1987,9 @@ void button2(button_press_t press_type) {
 
   static uint32_t last_time_btn2 = 0;
   static uint32_t last_time_btn2_down = 0;
+  uint8_t i, j;
+
+  Serial.println("Button2 Press");
 
   // do button 2 stuff
   switch (state) {
@@ -1932,7 +2031,7 @@ void button2(button_press_t press_type) {
         selected_item = 0;
       } else {
         selected_item++;
-        if (selected_item >= sizeof(location_beacons) / sizeof(beacon_item_t)) {
+        if (selected_item >= LOCATIONS_SIZE) {
           selected_item = 0;
         }
       }
@@ -1945,7 +2044,23 @@ void button2(button_press_t press_type) {
         selected_item = 1;
       } else {
         selected_item++;
-        if (selected_item >= sizeof(droid_beacons) / sizeof(beacon_item_t)) {
+
+        // don't like counting this struct EVERY TIME a button is pressed;
+        // need to find a way to figure out sorting through the emulatable and non-emulatable
+        // beacons more cleanly; maybe a second struct array of only emulatable beacons
+        // that is generated once at the start?
+        //
+        // or do i separate custom and emulatable beacons?
+        // 
+        // this should work for now, just... ugly.
+        j = 0;
+        for(i=0; i<DROID_PERSONALITIES_SIZE; i++) {
+          if (droid_personalities[i].emulatable != 0) {
+            j++;
+          }
+        }
+
+        if (selected_item >= j) {
           selected_item = 0;
         }
       }
