@@ -116,7 +116,7 @@
  *           created some #defines to control color and font to make customization a little easier
  *           personality chip ID 0x0C now identified as 'D-O' thanks to cre8or on swgediscord.com
  *   v0.55 : Added BD personality to know personalities
- *           Set delay between beacon reacons to 1 minute; BD units CORRECTLY interpret the value of 0x02 as a 10 second delay.
+ *           Set delay between beacon reactions to 1 minute; BD units CORRECTLY interpret the value of 0x02 as a 10 second delay.
  *   v0.54 : Added volume control
  *           Started work on creating a generic menu system
  *           Centered the play track screen 
@@ -341,10 +341,18 @@ typedef struct {
 //
 // Droid Affiliations
 //
-// You could add custom droid affiliations here if you so choose. Custom affiliation values
-// may have unknown consequences with other droids (e.g. beacon not recognized by droids). This is
-// because IT IS ASSUMED that a formula is used to construct and deocde a droid's affiliation value
-// and not following that formula may lead to unexpected behavior (e.g. beacon not recognized by droids)
+// You could add custom droid affiliations here if you so choose, but they may not play well
+// with droids. I recommend values between 0x00 and 0x0B. A value from 0x0C to 0x0F will cause 
+// a droid to NOT react to the droid beacon. A value up to 0x3F could be used, but the issue
+// of no reaction for values from 0x_C to 0x_F will persist. 
+//
+// Droids are programmed to only recognize the three base affiliations. Custom affiliation
+// values will fall into one of these three groups:
+//     Scoundrel: 0x00 - 0x03
+//    Resistance: 0x04 - 0x07
+//   First Order: 0x08 - 0x0B
+//   No Reaction: 0x0C - 0x0F
+//
 affiliaton_t droid_affiliations[] = {
 // ID,    NAME
   { 0x01, "Scoundrel"   },
@@ -362,21 +370,21 @@ typedef struct {
 //
 // Location Beacons
 //
-// The beacons given below are known to exist in Galaxy's Edge (except for 0x00 and 0x04 which
-// have NEVER been observed in Galaxy's Edge.) There's probably not much reason to add 'custom'
-// location beacons as your droid likely won't respond to any value other than the ones listed
-// below. However you could change the names of the beacons to anything you want, especially if you're
-// using these beacons in an environment outside of Galaxy's Edge!
+// The beacons given below are known to exist in Galaxy's Edge (except for 0x04 which has
+// not yet been observed in Galaxy's Edge.) There's probably not much reason to add 'custom'
+// location beacons as your droid is programmed to ignore any value at or above 0x08. However 
+// you could change the names of the beacons to anything you want, especially if you're using 
+// these beacons in an environment outside of Galaxy's Edge!
+//
 location_t locations[] = {
 // ID,    NAME
-//{ 0x00, "The Void"      },
-  { 0x01, "Marketplace"   },
-  { 0x02, "Behind Depot"  },
-  { 0x03, "Resistance"    },
-//{ 0x04, "Unknown"       },
-  { 0x05, "Droid Depot"   },
-  { 0x06, "Dok Ondar's"   },
-  { 0x07, "First Order"   },
+  { 0x01, "Marketplace"  },
+  { 0x02, "Behind Depot" },
+  { 0x03, "Resistance"   },
+  { 0x04, "Unknown"      },
+  { 0x05, "Droid Depot"  },
+  { 0x06, "Dok Ondar's"  },
+  { 0x07, "First Order"  },
 };
 
 #define LOCATIONS_SIZE  sizeof(locations)/sizeof(location_t)
@@ -541,7 +549,7 @@ menu_item_t connected_menu[] = {
 };
 
 TFT_eSPI tft = TFT_eSPI();      // display interface
-bool tft_update = true;         // flag to inidcate display needs to be updated
+bool tft_update = true;         // flag to indicate display needs to be updated
 
 typedef struct {                // information for rendering lists; could probably define multiple list styles rather than a single global variable
   uint8_t  text_size;
@@ -1065,7 +1073,7 @@ void display_list(const char **items, uint8_t num_items) {
     }
 
     // draw the list item on the screen
-    tft.drawString(items[i], tft.getViewportWidth()/2, y + row_padding + 1);    // the +1 here is to compensate for the box being slightly veritcally off-center
+    tft.drawString(items[i], tft.getViewportWidth()/2, y + row_padding + 1);    // the +1 here is to compensate for the box being slightly vertically off-center
 
     // increment y for the next list item
     y += row_height;
@@ -1885,7 +1893,7 @@ void button1(button_press_t press_type) {
 
         // droid:paired with remote?
         if (beacon.type == DROID) {
-          if (beacon.setting[2] > 1) {    // swap betweeen paired (1) and not paired (0)
+          if (beacon.setting[2] > 1) {    // swap between paired (1) and not paired (0)
             beacon.setting[2] = 0;
           }
 
@@ -2292,7 +2300,7 @@ void setup() {
     }
   }
 
-  // just so there's no garbage in there if it gets used before being initilized.
+  // just so there's no garbage in there if it gets used before being initialized.
   set_random_beacon();
 
   // init serial monitor
