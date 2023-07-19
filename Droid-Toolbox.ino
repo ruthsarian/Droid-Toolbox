@@ -347,7 +347,7 @@ typedef struct {
 // of no reaction for values from 0x_C to 0x_F will persist. 
 //
 // Droids are programmed to only recognize the three base affiliations. Custom affiliation
-// values will fall into one of these three groups:
+// values will fall into one of these groups:
 //     Scoundrel: 0x00 - 0x03
 //    Resistance: 0x04 - 0x07
 //   First Order: 0x08 - 0x0B
