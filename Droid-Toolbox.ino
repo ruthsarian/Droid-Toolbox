@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.61 : ruthsarian@gmail.com
+/* Droid Toolbox v0.62 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * NOTE: your droid remote MUST BE OFF for this to work!
@@ -103,6 +103,9 @@
  *   any value in scanning for SWGE East/West beacon (used by the Disney Play app) and identifying which location you're in based off that?
  *
  * HISTORY
+ *   v0.62 : added battery/power voltage display on the splash screen. 
+ *           displayed value is only updated when splash screen is loaded; this is not a realtime monitor.
+ *           thanks to Tom Harris for suggesting this feature and providing some code to work with!
  *   v0.61 : reworked how personality, location, and affiliation data is stored in the code to make modification of that data a little easier.
  *           added ability to display custom names for droids based off their bluetooth address. custom names can be added to the named_droids[] array in the code below.
  *   v0.60 : added ability to select which beacon the droid toolbox will produce
@@ -155,7 +158,7 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.61"                 // the version displayed on the splash screen at the lower right
+#define MSG_VERSION                         "v0.62"                 // the version displayed on the splash screen at the lower right
 
 #define DEFAULT_TEXT_SIZE                   2                       // a generic size used throughout 
 #define DEFAULT_TEXT_COLOR                  TFT_DARKGREY            // e.g. 'turn off your droid remote'
@@ -410,8 +413,10 @@ const char* msg_beacon_location_param[NUM_BEACON_PARAMS] = {
 #define BUTTON1_PIN       0   // button 1 on the TTGO T-Display and T-Display-S3 is GPIO 0
 #ifdef TDISPLAYS3          
   #define BUTTON2_PIN     14  // button 2 on the T-Display-S3 is GPIO14
+  #define BAT_ADC_PIN     4   // battery monitor pin
 #else
   #define BUTTON2_PIN     35  // button 2 on the TTGO T-Display is GPIO 35
+  #define BAT_ADC_PIN     34  // battery monitor pin
 #endif
 
 #define LAZY_DEBOUNCE     10  // time to wait after a button press before considering it a good press
@@ -426,6 +431,8 @@ const char* msg_beacon_location_param[NUM_BEACON_PARAMS] = {
 
 #define WAKEUP_BUTTON     GPIO_NUM_0  // wake up when button 1 is pressed _ONLY_IF_ it's been enabled in setup(); otherwise the reset button will wake up the TTGO
 #define WAKEUP_LEVEL      LOW         // wake up from sleep when the button is pressed (LOW)
+
+
 
 const BLEUUID serviceUUID("09b600a0-3e42-41fc-b474-e9c0c8f0c801");
 const BLEUUID cmdUUID("09b600b1-3e42-41fc-b474-e9c0c8f0c801");
@@ -1270,10 +1277,11 @@ void display_beacon_control() {
 // display the splash screen seen when the program starts
 void display_splash() {
   uint16_t y = 0;
+  char msg[MSG_LEN_MAX];
 
   // surely there's an easier way to vertically position the splash screen text
   tft.setTextSize(1);
-  y = (tft.height() - ((tft.fontHeight() * (SPLASH_TEXT_SIZE + 1)) + (tft.fontHeight() * SPLASH_TEXT_SIZE * 4))) / 2;
+  y = (tft.height() - ((tft.fontHeight() * (SPLASH_TEXT_SIZE + 1)) + (tft.fontHeight() * SPLASH_TEXT_SIZE * 5))) / 2;
   tft.setCursor(0, y);
 
   tft.setTextDatum(TC_DATUM);
@@ -1299,7 +1307,22 @@ void display_splash() {
   // version
   tft.setTextColor(SPLASH_VERSION_COLOR);
   tft.setTextDatum(BR_DATUM);
-  tft.drawString(msg_version, tft.width(), tft.height());
+  tft.drawString(msg_version, tft.width()-0, tft.height());
+
+  // battery voltage
+  tft.setTextDatum(BL_DATUM);
+  y = (analogRead(BAT_ADC_PIN) * 2 * 3.3 * 1000) / 4096;
+  if (y < 3400) {
+    tft.setTextColor(C565(128,0,0));        // need to charge the battery
+  } else if (y < 3800) {
+    tft.setTextColor(C565(96,96,0));        // battery is getting low
+  } else if (y < 4400) {
+    tft.setTextColor(C565(0,128,0));        // battery is charged
+  } else {
+    tft.setTextColor(SPLASH_VERSION_COLOR); // you're probably on USB
+  }
+  snprintf(msg, MSG_LEN_MAX, "%s:%.2fV", (y<4400 ? "BAT" : "PWR"), (y / (float)1000));
+  tft.drawString(msg, 0, tft.height());
 }
 
 void display_scanner_results() {
