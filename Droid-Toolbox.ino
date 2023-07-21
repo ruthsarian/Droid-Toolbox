@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.62 : ruthsarian@gmail.com
+/* Droid Toolbox v0.63 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * NOTE: your droid remote MUST BE OFF for this to work!
@@ -100,9 +100,14 @@
  *        control motors (is this a GOOD idea? probably not...)
  *        other ??
  *   consider a method for setting font sizes based on screen size
- *   any value in scanning for SWGE East/West beacon (used by the Disney Play app) and identifying which location you're in based off that?
+ *   is there any value in scanning for SWGE East/West beacon (used by the Disney Play app) and identifying which location you're in based off that?
+ *   ability save beacons that are defined in EXPERT mode?
  *
  * HISTORY
+ *   v0.63 : expert mode can now create droid beacons that will be seen by other toolboxes; you cannot connect to emulated beacons
+ *           adding this feature lead me to rewrite a lot of the expert beacon display code
+ *           added SERIAL_DEBUG_ENABLE which, if not defined, will prevent messages from being sent over the serial monitor
+ *           used the newly created droid beacon feature to identify and a bug with the scanner that caused a crash when encountering an unknown personality chip
  *   v0.62 : added battery/power voltage display on the splash screen. 
  *           displayed value is only updated when splash screen is loaded; this is not a realtime monitor.
  *           thanks to Tom Harris for suggesting this feature and providing some code to work with!
@@ -153,12 +158,11 @@
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
 
-#define NUM_BEACON_PARAMS                   3
 #define C565(r,g,b)                         ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)    // macro to convert RGB values to TFT_eSPI color value
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.62"                 // the version displayed on the splash screen at the lower right
+#define MSG_VERSION                         "v0.63"                 // the version displayed on the splash screen at the lower right
 
 #define DEFAULT_TEXT_SIZE                   2                       // a generic size used throughout 
 #define DEFAULT_TEXT_COLOR                  TFT_DARKGREY            // e.g. 'turn off your droid remote'
@@ -230,10 +234,12 @@
 #define VOLUME_TEXT_COLOR                   TFT_DARKGREY
 #define VOLUME_SELECTED_TEXT_COLOR          TFT_GREEN
 
-#define SLEEP_AFTER 5 * 60 * 1000  // how many milliseconds of inactivity before going to sleep/hibernation
+#define SLEEP_AFTER                         5 * 60 * 1000  // how many milliseconds of inactivity before going to sleep/hibernation
+//#define SERIAL_DEBUG_ENABLE                 // uncomment to enable serial debug/monitor messages
 
 // static strings used throughout DroidToolbox
 const char ble_adv_name[]               = "DROIDTLBX";              // this is the name the toolbox's beacon will appear as, keep to 10 characters or less
+const char ble_adv_name_droid[]         = "DROID";
 const char msg_version[]                = MSG_VERSION;
 const char msg_title[]                  = "Droid Toolbox";
 const char msg_email[]                  = "ruthsarian@gmail.com";
@@ -259,6 +265,7 @@ const char msg_no_droids2[]             = "In Area";
 const char msg_unknown_int[]            = "Unknown (%d)";           // probably need to remove the printf variables from these strings
 const char msg_rssi[]                   = "rssi: %ddBm";
 const char msg_d_of_d[]                 = "%d of %d";
+const char msg_int_minutes[]            = "%d mins";
 const char msg_sounds[]                 = "SOUNDS";
 const char msg_volume[]                 = "VOLUME";
 const char msg_random[]                 = "RANDOM";
@@ -297,6 +304,7 @@ typedef struct {
 //   - to customize the droid beacon list to something smaller/manageable; removing those you don't use
 //   - to hide custom personality chip identities from being emulatable
 //   - because the programmer created this 'feature' for another reason, then rewrote the code making the 'feature' useless
+//
 personality_t droid_personalities[] = {
 //  ID,   NAME,       AFF,  E
   { 0x01, "R Unit",   0x01, 1},
@@ -379,6 +387,8 @@ typedef struct {
 // you could change the names of the beacons to anything you want, especially if you're using 
 // these beacons in an environment outside of Galaxy's Edge!
 //
+// NOTE: a droid does "see" a location beacon with a value of 0, however it will not react
+//
 location_t locations[] = {
 // ID,    NAME
   { 0x01, "Marketplace"  },
@@ -392,19 +402,53 @@ location_t locations[] = {
 
 #define LOCATIONS_SIZE  sizeof(locations)/sizeof(location_t)
 
+#define NUM_BEACON_PARAMS 4
+
 // next two arrays are labels for the expert beacon screen
 const char* msg_beacon_droid_param[NUM_BEACON_PARAMS] = {
   "CHIP",
   "AFFL",
-  "PAIRED"
+  "PAIRED",
+  "B DROID"
 };
 const char* msg_beacon_location_param[NUM_BEACON_PARAMS] = {
   "LCTN", 
   "REACT INT", 
-  "MIN RSSI"
+  "MIN RSSI",
+  nullptr
 };
 
 // CUSTOMIZATIONS END -- In theory you shouldn't have to edit anything below this line.
+
+// there has got to be a better way to manage expert beacon parameter variables
+// like determinig their length on-the-fly rather than hard-coded NUM_BEACON_PARAMS
+// but for now it's all about just making it work. i make it pretty later on.
+
+// define array index values for msg_beacon_droid_param[]
+#define BEACON_PARAM_DROID_ID     0
+#define BEACON_PARAM_DROID_AFFL   1
+#define BEACON_PARAM_DROID_PAIRED 2
+#define BEACON_PARAM_DROID_BDROID 3
+
+// define array index values for msg_beacon_location_param[]
+#define BEACON_PARAM_LCTN_ID      0
+#define BEACON_PARAM_LCTN_REACT   1
+#define BEACON_PARAM_LCTN_RSSI    2
+#define BEACON_PARAM_LCTN_PARAM4  3
+
+typedef enum {
+  DROID,
+  LOCATION,
+} beacon_type_t;
+
+typedef struct {
+  beacon_type_t type;                 // DROID or LOCATION
+  uint8_t setting[NUM_BEACON_PARAMS]; // 0 = droid:personality[1:14],  location:location[1:7]
+                                      // 1 = droid:affiliation[1,5,9], location:interval[1:20]
+                                      // 2 = droid:paired[0,1],        location:minimum_rssi[58:28]
+                                      // 3 = droid:bdroid[0,1],        location:unused
+} beacon_t;
+beacon_t beacon;
 
 #if (defined(ARDUINO_ESP32S3_DEV) || defined(ARDUINO_LILYGO_T_DISPLAY_S3))  // this is assuming you're compiling for T-Display-S3 using the "ESP32S3 Dev Module" or "LilyGo T-Display-S3" board.
   #define TDISPLAYS3
@@ -432,7 +476,18 @@ const char* msg_beacon_location_param[NUM_BEACON_PARAMS] = {
 #define WAKEUP_BUTTON     GPIO_NUM_0  // wake up when button 1 is pressed _ONLY_IF_ it's been enabled in setup(); otherwise the reset button will wake up the TTGO
 #define WAKEUP_LEVEL      LOW         // wake up from sleep when the button is pressed (LOW)
 
-
+// Using these macros to print debug messages will make it easier to disable the printing of those messages by undefining SERIAL_DEBUG_ENABLE
+#ifdef SERIAL_DEBUG_ENABLE
+  #define SERIAL_PRINT(x)       Serial.print(x)
+  #define SERIAL_PRINTLN(x)     Serial.println(x)
+  #define SERIAL_PRINT2(x,y)    Serial.print(x,y)
+  #define SERIAL_PRINTLN2(x,y)  Serial.println(x,y)
+#else
+  #define SERIAL_PRINT(x)
+  #define SERIAL_PRINTLN(x)
+  #define SERIAL_PRINT2(x,y)
+  #define SERIAL_PRINTLN2(x,y)
+#endif
 
 const BLEUUID serviceUUID("09b600a0-3e42-41fc-b474-e9c0c8f0c801");
 const BLEUUID cmdUUID("09b600b1-3e42-41fc-b474-e9c0c8f0c801");
@@ -483,19 +538,6 @@ const uint8_t SWGE_DROID_BEACON_PAYLOAD[] = {
 };
 
 uint8_t payload[PAYLOAD_SIZE];
-
-typedef enum {
-  DROID,
-  LOCATION,
-} beacon_type_t;
-
-typedef struct {
-  beacon_type_t type;                 // DROID or LOCATION
-  uint8_t setting[NUM_BEACON_PARAMS]; // 0 = droid:personality[1:14],  location:location[1:7]
-                                      // 1 = droid:affiliation[1,5,9], location:interval[1:20]
-                                      // 2 = droid:paired[0,1],        location:minimum_rssi[58:28]
-} beacon_t;
-beacon_t beacon;
 
 typedef enum {
   SHORT_PRESS,
@@ -601,12 +643,16 @@ location_t* get_location(uint8_t id) {
   return nullptr;
 }
 
-void init_advertisement_data() {
+void init_advertisement_data(const char* name) {
   if (pAdvertisementData != nullptr) {
     delete pAdvertisementData;
   }
   pAdvertisementData = new BLEAdvertisementData();
-  pAdvertisementData->setName(ble_adv_name);
+  if (name == nullptr) {
+    pAdvertisementData->setName(ble_adv_name);
+  } else {
+    pAdvertisementData->setName(name);
+  }
 }
 
 void load_payload_location_beacon_data() {
@@ -631,26 +677,27 @@ void set_droid_beacon(uint8_t personality) {
   if (p != nullptr && p->emulatable != 0) {
 
     // create a droid beacon
-    Serial.println("Creating a DROID beacon.");
+    SERIAL_PRINTLN("Creating a DROID beacon.");
     beacon.type = DROID;
 
     // populate the beacon values
-    beacon.setting[0] = p->id;
-    beacon.setting[1] = p->affiliation;
-    beacon.setting[2] = 1;
+    beacon.setting[BEACON_PARAM_DROID_ID]     = p->id;
+    beacon.setting[BEACON_PARAM_DROID_AFFL]   = p->affiliation;
+    beacon.setting[BEACON_PARAM_DROID_PAIRED] = 1;
+    beacon.setting[BEACON_PARAM_DROID_BDROID] = 0;
 
     // output personality name to serial
-    Serial.print("  Personality: ");
-    Serial.println(p->name);
+    SERIAL_PRINT("  Personality: ");
+    SERIAL_PRINTLN(p->name);
 
     // output affiliation to serial
-    Serial.print("  Affiliation: ");
+    SERIAL_PRINT("  Affiliation: ");
     a = get_droid_affiliation(p->affiliation);
     if (a != nullptr) {
-      Serial.println(a->name);
+      SERIAL_PRINTLN(a->name);
     } else {
       snprintf(msg, MSG_LEN_MAX, msg_unknown_int, p->affiliation);
-      Serial.println(msg);
+      SERIAL_PRINTLN(msg);
     }
   } else {
     // pick a random droid beacon, only pick from emulatable personalities
@@ -670,24 +717,27 @@ void set_location_beacon(uint8_t location) {
 
     // create a location beacon
     beacon.type = LOCATION;
-    Serial.println("Creating a LOCATION beacon.");
+    SERIAL_PRINTLN("Creating a LOCATION beacon.");
 
     // set the bacon location value
-    beacon.setting[0] = l->id;
-    Serial.print("  Location: ");
-    Serial.println(l->name);
+    beacon.setting[BEACON_PARAM_LCTN_ID] = l->id;
+    SERIAL_PRINT("  Location: ");
+    SERIAL_PRINTLN(l->name);
 
     // set reaction interval (in minutes), could go as high as 19, but keeping it low on purpose
-    //beacon.setting[1] = (esp_random() % 3) + 1;
-    beacon.setting[1] = 2;
-    Serial.print("  Interval: ");
-    Serial.println(beacon.setting[1]);
+    //beacon.setting[BEACON_PARAM_LCTN_REACT] = (esp_random() % 3) + 1;
+    beacon.setting[BEACON_PARAM_LCTN_REACT] = 2;
+    SERIAL_PRINT("  Interval: ");
+    SERIAL_PRINTLN(beacon.setting[BEACON_PARAM_LCTN_REACT]);
 
     // set minimum RSSI for droid to react; while this value is stored as an unsigned value, think of it as a negative value in dBm; e.g. 38 = -38dBm
-    beacon.setting[2] = 38;
-    Serial.print("  Minimum RSSI: -");
-    Serial.print(beacon.setting[2]);
-    Serial.println("dBm");
+    beacon.setting[BEACON_PARAM_LCTN_RSSI] = 38;
+    SERIAL_PRINT("  Minimum RSSI: -");
+    SERIAL_PRINT(beacon.setting[BEACON_PARAM_LCTN_RSSI]);
+    SERIAL_PRINTLN("dBm");
+
+    // is this even necessary? we don't use this...
+    beacon.setting[BEACON_PARAM_LCTN_PARAM4] = 0;
   } else {
 
     // if no valid location was found, select one of the known locations at random
@@ -697,7 +747,7 @@ void set_location_beacon(uint8_t location) {
 
 // populate the global beacon variable with random(ish) values
 void set_random_beacon() {
-  Serial.println("Generating a random beacon.");
+  SERIAL_PRINTLN("Generating a random beacon.");
   if (esp_random() % 2)  {
     set_droid_beacon(0);      // create a DROID beacon
   } else {
@@ -713,26 +763,26 @@ void set_payload_from_beacon() {
     load_payload_droid_beacon_data();
 
     // set whether or not the droid appears as being paired with a remote
-    payload[5] = 0x01 + (beacon.setting[2] > 0 ? 0x80 : 0x00);
+    payload[5] = 0x01 + (beacon.setting[BEACON_PARAM_DROID_PAIRED] > 0 ? 0x80 : 0x00);
 
     // set affiliation
-    payload[6] = 0x80 + (beacon.setting[1] * 2);
+    payload[6] = 0x80 + (beacon.setting[BEACON_PARAM_DROID_AFFL] * 2);
 
     // set personality chip id
-    payload[7] = beacon.setting[0];
+    payload[7] = beacon.setting[BEACON_PARAM_DROID_ID];
 
   // LOCATION beacon type
   } else {
     load_payload_location_beacon_data();
 
     // set location
-    payload[4] = beacon.setting[0];
+    payload[4] = beacon.setting[BEACON_PARAM_LCTN_ID];
 
     // set reaction interval
-    payload[5] = (beacon.setting[1] % 20) * 12;
+    payload[5] = (beacon.setting[BEACON_PARAM_LCTN_REACT] % 20) * 12;
 
     // set minimum RSSI for reaction
-    payload[6] = 0x80 + beacon.setting[2];
+    payload[6] = 0x80 + beacon.setting[BEACON_PARAM_LCTN_RSSI];
   }
 
   // load the payload into the advertisement data
@@ -798,17 +848,17 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
 
     // first check to make sure there isn't already a pointer and if there is delete it
     if (droids[pos].pAdvertisedDevice != nullptr) {
-      Serial.println("delete old AdvertsidedDevice object");
+      SERIAL_PRINTLN("delete old AdvertsidedDevice object");
       delete droids[pos].pAdvertisedDevice;
     }
 
     // store the droid's AdvertsiedDevice object
     droids[pos].pAdvertisedDevice = new BLEAdvertisedDevice(advertisedDevice);
 
-    Serial.print("Droid Found -- BD_ADDR: ");
-    Serial.print(droids[pos].pAdvertisedDevice->getAddress().toString().c_str());
-    Serial.print(", RSSI: ");
-    Serial.println(advertisedDevice.getRSSI());
+    SERIAL_PRINT("Droid Found -- BD_ADDR: ");
+    SERIAL_PRINT(droids[pos].pAdvertisedDevice->getAddress().toString().c_str());
+    SERIAL_PRINT(", RSSI: ");
+    SERIAL_PRINTLN(advertisedDevice.getRSSI());
 
     // increment counter
     if (droid_count < MAX_DROIDS) {
@@ -824,18 +874,18 @@ void notifyCallback(
   bool isNotify) {
   uint8_t i, j;
 
-  Serial.print("Notify callback for characteristic: ");
-  Serial.print(pBLERemoteCharacteristic->getUUID().toString().c_str());
-  Serial.print(" of data length ");
-  Serial.println(length);
-  Serial.print("data: ");
+  SERIAL_PRINT("Notify callback for characteristic: ");
+  SERIAL_PRINT(pBLERemoteCharacteristic->getUUID().toString().c_str());
+  SERIAL_PRINT(" of data length ");
+  SERIAL_PRINTLN(length);
+  SERIAL_PRINT("data: ");
 
-  // Serial.println((char*)pData);
+  // SERIAL_PRINTLN((char*)pData);
   for (i = 0; i < length; i++) {
 
     // print hex value
-    Serial.print(pData[i], HEX);
-    Serial.print(" ");
+    SERIAL_PRINT2(pData[i], HEX);
+    SERIAL_PRINT(" ");
 
     // newline
     if ((i % 16 == 0 && i > 0) || (i == (length - 1))) {
@@ -844,20 +894,20 @@ void notifyCallback(
       } else {
         j = i - 16;
       }
-      Serial.print("    [ ");
+      SERIAL_PRINT("    [ ");
       for (; j < i; j++) {
-        Serial.print((char)pData[j]);
+        SERIAL_PRINT((char)pData[j]);
       }
-      Serial.println(" ]");
+      SERIAL_PRINTLN(" ]");
     }
   }
-  Serial.println();
+  SERIAL_PRINTLN();
 }
 
 void droid_disconnect() {
   // disconnect from any previous connection
   if (pClient != nullptr && pClient->isConnected()) {
-    Serial.println("Disconnecting from droid.");
+    SERIAL_PRINTLN("Disconnecting from droid.");
     pClient->disconnect();
   }
 }
@@ -871,17 +921,17 @@ bool droid_connect() {
   droid_disconnect();
 
   // create a new connection
-  Serial.print("Connecting to ");
-  Serial.println(droids[current_droid].pAdvertisedDevice->getAddress().toString().c_str());
+  SERIAL_PRINT("Connecting to ");
+  SERIAL_PRINTLN(droids[current_droid].pAdvertisedDevice->getAddress().toString().c_str());
   if (!pClient->connect(droids[current_droid].pAdvertisedDevice)) {
-    Serial.println("Connection failed.");
+    SERIAL_PRINTLN("Connection failed.");
     return false;
   }
 
   // locate the service we want to talk to
   pRemoteService = pClient->getService(serviceUUID);
   if (pRemoteService == nullptr) {
-    Serial.println("Failed to find droid service.");
+    SERIAL_PRINTLN("Failed to find droid service.");
     droid_disconnect();
     return false;
   }
@@ -889,7 +939,7 @@ bool droid_connect() {
   // get the characteristic that receives commands
   pRemoteCharacteristicCmd = pRemoteService->getCharacteristic(cmdUUID);
   if (pRemoteCharacteristicCmd == nullptr) {
-    Serial.println("Failed to find droid chracteristic.");
+    SERIAL_PRINTLN("Failed to find droid chracteristic.");
     droid_disconnect();
     return false;
   }
@@ -898,7 +948,7 @@ bool droid_connect() {
   // get the characteristic that receives notifications from the droid
   pRemoteCharacteristicNotify = pRemoteService->getCharacteristic(notifyUUID);
   if (pRemoteCharacteristicNotify == nullptr) {
-    Serial.println("Failed to find droid chracteristic.");
+    SERIAL_PRINTLN("Failed to find droid chracteristic.");
     droid_disconnect();
     return false;
   }
@@ -927,10 +977,10 @@ void droid_play_track() {
     cmd_set_group[7] = current_group % 12;
     cmd_play_track[7] = current_track & 0xFF;
 
-    Serial.print("Playing track ");
-    Serial.print(current_group);
-    Serial.print("-");
-    Serial.println(current_track);
+    SERIAL_PRINT("Playing track ");
+    SERIAL_PRINT(current_group);
+    SERIAL_PRINT("-");
+    SERIAL_PRINTLN(current_track);
 
     pRemoteCharacteristicCmd->writeValue(cmd_set_group, sizeof(cmd_set_group));
     delay(100);
@@ -956,8 +1006,8 @@ void droid_set_volume() {
                                                               // 100 / 31 = 3.2 (ish)
                                                               // the 0 to 100 volume scale is just cosmetic
 
-    Serial.print("New volume: 0x");
-    Serial.println(cmd_set_volume[7], HEX);
+    SERIAL_PRINT("New volume: 0x");
+    SERIAL_PRINTLN2(cmd_set_volume[7], HEX);
 
     pRemoteCharacteristicCmd->writeValue(cmd_set_volume, sizeof(cmd_set_volume));
     delay(100);
@@ -976,8 +1026,8 @@ void ble_scan() {
   BLEScanResults foundDevices = pBLEScan->start(BLE_SCAN_TIME, false);
 
   // Report results via Serial
-  Serial.print(foundDevices.getCount());
-  Serial.println(" BLE devices seen.");
+  SERIAL_PRINT(foundDevices.getCount());
+  SERIAL_PRINTLN(" BLE devices seen.");
 
   // delete results fromBLEScan buffer to release memory
   pBLEScan->clearResults();
@@ -1210,19 +1260,19 @@ void display_beacon_control() {
   bfs = tft.fontHeight();
   
   gap = (bfs * BEACON_CONTROL_TEXT_SIZE) / 2;
-  Serial.print("BC:gap = ");
-  Serial.println(gap);
+  SERIAL_PRINT("BC:gap = ");
+  SERIAL_PRINTLN(gap);
 
   content_height = (bfs * BEACON_CONTROL_TYPE_TEXT_SIZE) + (bfs * BEACON_CONTROL_TEXT_SIZE *2) + gap + (BEACON_CONTROL_TEXT_PADDING * 3);
-  Serial.print("BC:content_height = ");
-  Serial.println(content_height);
+  SERIAL_PRINT("BC:content_height = ");
+  SERIAL_PRINTLN(content_height);
 
   // calculate where to begin drawing text  
   y = (tft.getViewportHeight() - content_height)/2;
 
-  Serial.print("BC:y = ");
-  Serial.println(y);
-  Serial.println();
+  SERIAL_PRINT("BC:y = ");
+  SERIAL_PRINTLN(y);
+  SERIAL_PRINTLN();
 
   // begin rendering the screen
   tft.setTextDatum(TC_DATUM);
@@ -1244,18 +1294,18 @@ void display_beacon_control() {
   tft.setTextSize(BEACON_CONTROL_TEXT_SIZE);
   tft.setTextColor(BEACON_CONTROL_ID_COLOR);
   if (beacon.type == DROID) {
-    p = get_droid_personality(beacon.setting[0]);
+    p = get_droid_personality(beacon.setting[BEACON_PARAM_DROID_ID]);
     if (p != nullptr) {
       snprintf(msg, MSG_LEN_MAX, "%s", p->name);
     } else {
-      snprintf(msg, MSG_LEN_MAX, msg_unknown_int, beacon.setting[0]);
+      snprintf(msg, MSG_LEN_MAX, msg_unknown_int, beacon.setting[BEACON_PARAM_DROID_ID]);
     }
   } else {
-    l = get_location(beacon.setting[0]);
+    l = get_location(beacon.setting[BEACON_PARAM_LCTN_ID]);
     if (l != nullptr) {
       snprintf(msg, MSG_LEN_MAX, "%s", l->name);
     } else {
-      snprintf(msg, MSG_LEN_MAX, msg_unknown_int, beacon.setting[0]);
+      snprintf(msg, MSG_LEN_MAX, msg_unknown_int, beacon.setting[BEACON_PARAM_LCTN_ID]);
     }
   }
   tft.drawString(msg, tft.getViewportWidth()/2, y);
@@ -1331,6 +1381,7 @@ void display_scanner_results() {
   uint8_t i;
   const char* name = nullptr;
   affiliaton_t* a = nullptr;
+  personality_t* p = nullptr;
 
   // display header
   tft.setTextSize(DROID_REPORT_TEXT_SIZE);
@@ -1359,7 +1410,14 @@ void display_scanner_results() {
 
     // if a ble address match was not found, grab the details of the droid based on ID
     if (name == nullptr) {
-      name = get_droid_personality(droids[current_droid].chipid)->name;
+
+      // search known personalities
+      p = get_droid_personality(droids[current_droid].chipid);
+
+      // if a known personality was found, extract its name
+      if (p != nullptr) {
+        name = get_droid_personality(droids[current_droid].chipid)->name;
+      }
     }
 
     // print personality name
@@ -1535,6 +1593,7 @@ void display_volume() {
 
 void display_beacon_expert() {
   char msg[MSG_LEN_MAX];
+  const char* pname;
   uint8_t i;
   personality_t* p = nullptr;
   affiliaton_t* a = nullptr;
@@ -1552,8 +1611,8 @@ void display_beacon_expert() {
       label_width = tft.textWidth(msg_beacon_location_param[i]);
     }
   }
-  Serial.print("label_width = ");
-  Serial.println(label_width);
+  SERIAL_PRINT("label_width = ");
+  SERIAL_PRINTLN(label_width);
   */
 
   // shrink the screen to give a little gap between the content and screen edge
@@ -1580,92 +1639,116 @@ void display_beacon_expert() {
   tft.println(msg);
   tft.setCursor(tft.getCursorX(), tft.getCursorY() + 2);
 
-  // print the various parameters of the beacon
+  // loop through all the beacon parameters, printing out the name and value of each
   for (i=0; i<NUM_BEACON_PARAMS; i++) {
 
-    // label
-    if (beacon.type == DROID) {
-      snprintf(msg, MSG_LEN_MAX, "%s: ", msg_beacon_droid_param[i]);
-    } else {
-      snprintf(msg, MSG_LEN_MAX, "%s: ", msg_beacon_location_param[i]);
+    // get current parameter name
+    pname = (beacon.type == DROID) ? msg_beacon_droid_param[i] : msg_beacon_location_param[i];
+
+    // skip parameters that have no name
+    if (pname == nullptr) {
+      SERIAL_PRINT("Parameter ");
+      SERIAL_PRINT(i);
+      SERIAL_PRINTLN(" is not present. Skipping.");
+      continue;
     }
+
+    // print the parameter name
+    snprintf(msg, MSG_LEN_MAX, "%s: ", pname);
     tft.setTextColor(BEACON_EXPERT_LABEL_COLOR);
     tft.print(msg);
 
-    // value
-    snprintf(msg, MSG_LEN_MAX, "%d", beacon.setting[i]);
-
-    // droid beacon
+    // print the parameter value
+    // how the value is displayed will depend on what type of beacon it is
     if (beacon.type == DROID) {
+      switch(i) {
 
-      // personality
-      if (i==0) {
-        p = get_droid_personality(beacon.setting[i]);
-        if (p != nullptr) {
-          snprintf(msg, MSG_LEN_MAX, "%s", p->name);
-        } else {
-          snprintf(msg, MSG_LEN_MAX, msg_unknown_int, beacon.setting[i]);
-        }
+        case BEACON_PARAM_DROID_ID:   // PARAMETER: personality
+          p = get_droid_personality(beacon.setting[i]);
+          if (p != nullptr) {
+            snprintf(msg, MSG_LEN_MAX, "%s", p->name);
+          } else {
+            snprintf(msg, MSG_LEN_MAX, msg_unknown_int, beacon.setting[i]);
+          }
+          break;
 
-      // affiliation
-      } else if (i==1) {
-        a = get_droid_affiliation(beacon.setting[i]);
-        if (a != nullptr) {
-          snprintf(msg, MSG_LEN_MAX, "%s", a->name);
-        } else {
-          snprintf(msg, MSG_LEN_MAX, msg_unknown_int, beacon.setting[i]);
-        }
+        case BEACON_PARAM_DROID_AFFL: // PARAMETER: affiliation
+          a = get_droid_affiliation(beacon.setting[i]);
+          if (a != nullptr) {
+            snprintf(msg, MSG_LEN_MAX, "%s", a->name);
+          } else {
+            snprintf(msg, MSG_LEN_MAX, msg_unknown_int, beacon.setting[i]);
+          }
+          break;
 
-      // paired
-      } else if (i==2) {
-        if (beacon.setting[i] == 0) {
-          snprintf(msg, MSG_LEN_MAX, "%s", msg_no);
-        } else {
-          snprintf(msg, MSG_LEN_MAX, "%s", msg_yes);
-        }
+        case BEACON_PARAM_DROID_PAIRED: // PARAMETER: paired
+        case BEACON_PARAM_DROID_BDROID: // PARAMETER: be a droid
+          if (beacon.setting[i] == 0) {
+            snprintf(msg, MSG_LEN_MAX, "%s", msg_no);
+          } else {
+            snprintf(msg, MSG_LEN_MAX, "%s", msg_yes);
+          }
+          break;
+
+        default:
+          snprintf(msg, MSG_LEN_MAX, "%d", beacon.setting[i]);
+          break;
       }
 
     // location beacon
     } else {
+      switch(i) {
 
-      // location
-      if (i==0) {
-        l = get_location(beacon.setting[i]);
-        if (l != nullptr) {
-          snprintf(msg, MSG_LEN_MAX, "%s", l->name);
-        } else {
-          snprintf(msg, MSG_LEN_MAX, msg_unknown_int, beacon.setting[i]);
-        }
+        case BEACON_PARAM_LCTN_ID: // PARAMETER: location
+          l = get_location(beacon.setting[i]);
+          if (l != nullptr) {
+            snprintf(msg, MSG_LEN_MAX, "%s", l->name);
+          } else {
+            snprintf(msg, MSG_LEN_MAX, msg_unknown_int, beacon.setting[i]);
+          }
+          break;
 
-      // reaction interval (in minutes)
-      } else if (i==1) {
-        ;
+        case BEACON_PARAM_LCTN_REACT: // PARAMETER: reaction interval in minutes
+          snprintf(msg, MSG_LEN_MAX, msg_int_minutes, beacon.setting[i]);
+          break;
 
-      // minimum rssi
-      } else if (i==2) {
-        snprintf(msg, MSG_LEN_MAX, "-%ddBm", beacon.setting[i]);
+        case BEACON_PARAM_LCTN_RSSI: // PARAMETER: minimum rssi
+          snprintf(msg, MSG_LEN_MAX, "-%ddBm", beacon.setting[i]);
+          break;
+
+        default:
+          snprintf(msg, MSG_LEN_MAX, "%d", beacon.setting[i]);
+          break;
       }
     }
+
+    // select color of text depending on whether or not the current parameter is selected
     if (selected_item == i+1) {
       tft.setTextColor(BEACON_EXPERT_VALUE_SELECTED_COLOR);
     } else {
       tft.setTextColor(BEACON_EXPERT_VALUE_COLOR);
     }
+
+    // display parameter value
     tft.println(msg);
+
+    // relocate cursor to next line
     tft.setCursor(tft.getCursorX(), tft.getCursorY() + 2);
   }
-  
-  // display beacon state (active/inactive)
+
+  // display beacon state label
   snprintf(msg, MSG_LEN_MAX, "%s: ", msg_state);
   tft.setTextColor(BEACON_EXPERT_LABEL_COLOR);
   tft.print(msg);
 
+  // set text color based on whether or not beacon state is currently selected
   if (selected_item == NUM_BEACON_PARAMS+1) {
     tft.setTextColor(BEACON_EXPERT_VALUE_SELECTED_COLOR);
   } else {
     tft.setTextColor(BEACON_EXPERT_VALUE_COLOR);
   }
-  
+
+  // display the beacon state value
   if (state == BEACON_EXPERT_ACTIVE) {
     snprintf(msg, MSG_LEN_MAX, "%s", msg_beacon_active);
   } else {
@@ -1782,7 +1865,7 @@ void button1(button_press_t press_type) {
   static uint32_t last_time_btn1_down = 0;
   uint8_t i;
 
-  Serial.println("Button1 Press");
+  SERIAL_PRINTLN("Button 1 Press");
 
   switch (state) {
     case SPLASH:
@@ -1808,14 +1891,14 @@ void button1(button_press_t press_type) {
         // you'll be brought to the element in the beacon list where the randomly selected beacon is
         if (beacon.type == DROID) {
           for(i=0; i<emulatable_personalities_size; i++) {
-            if (emulatable_personalities[i]->id == beacon.setting[0]) {
+            if (emulatable_personalities[i]->id == beacon.setting[BEACON_PARAM_DROID_ID]) {
               selected_item = i;
               break;
             }
           }
         } else {
           for(i=0; i<LOCATIONS_SIZE; i++) {
-            if (locations[i].id == beacon.setting[0]) {
+            if (locations[i].id == beacon.setting[BEACON_PARAM_LCTN_ID]) {
               selected_item = i;
               break;
             }
@@ -1848,7 +1931,7 @@ void button1(button_press_t press_type) {
       break;
 
     case BEACON_ACTIVATE:
-      init_advertisement_data();
+      init_advertisement_data(nullptr);
       set_payload_from_beacon();
       pAdvertising->start();
       state = BEACON_ACTIVE;
@@ -1862,80 +1945,108 @@ void button1(button_press_t press_type) {
       break;
 
     case BEACON_EXPERT:
-      // change beacon type
+
+      // change beacon type; (re)initialize the beacon object
       if (selected_item == 0) {
+
         if (beacon.type == DROID) {
           beacon.type = LOCATION;
-          beacon.setting[0] = 1;  // default location
-          beacon.setting[1] = 2;  // default interval
-          beacon.setting[2] = 38; // default minimim rssi
+          beacon.setting[BEACON_PARAM_DROID_ID]     = 1;  // default location
+          beacon.setting[BEACON_PARAM_DROID_AFFL]   = 2;  // default interval
+          beacon.setting[BEACON_PARAM_DROID_PAIRED] = 38; // default minimim rssi
+          beacon.setting[BEACON_PARAM_DROID_BDROID] = 0;  // be a droid
         } else {
           beacon.type = DROID;
-          beacon.setting[0] = 1;  // default personality
-          beacon.setting[1] = 1;  // default affiliation
-          beacon.setting[2] = 1;  // default paired
+          beacon.setting[BEACON_PARAM_LCTN_ID]      = 1; // default personality
+          beacon.setting[BEACON_PARAM_LCTN_REACT]   = 1; // default affiliation
+          beacon.setting[BEACON_PARAM_LCTN_RSSI]    = 1; // default paired
+          beacon.setting[BEACON_PARAM_LCTN_PARAM4]  = 0; // unused
         }
 
-      // change beacon parameter 1
-      } else if (selected_item == 1) {
-         beacon.setting[0]++; 
+      // change beacon parameters
+      } else if (selected_item-1 < NUM_BEACON_PARAMS) {
 
-        // droid:personality
-        if (beacon.type == DROID) {
-          if (press_type == LONG_PRESS) {
-            beacon.setting[0] = 0;  // personality 0 doesn't exist...
-          }
+        // store the current beacon parameter index based on current selected_item value
+        i = selected_item - 1;
 
-        // location:location
+        // on a long press, reset the beacon setting to 0
+        if (press_type == LONG_PRESS) {
+          beacon.setting[i] = 0;
+
+        // otherwise, increment the parameter value by 1
         } else {
-          if (press_type == LONG_PRESS) {
-            beacon.setting[0] = 0;  // location 0 doesn't exist...
-          }
+          beacon.setting[i]++;
         }
 
-      // change beacon parameter 2
-      } else if (selected_item == 2) {
-        beacon.setting[1]++;
-
-        // droid:affiliation
+        // adjust parameter values as needed for a DROID beacon
         if (beacon.type == DROID) {
-          if (press_type == LONG_PRESS || beacon.setting[1] > 0x3F) {
-            beacon.setting[1] = 0;  // affiliation values beyond 0x3F break the formula
+          switch(i) {
+
+            // reset affiliation if affiliation goes above 0x3F
+            case BEACON_PARAM_DROID_AFFL:
+              if (beacon.setting[i] > 0x3F) {
+                beacon.setting[i] = 0;
+              }
+              break;
+
+            // these are yes/no parameters, keep their values as either 0 or 1
+            case BEACON_PARAM_DROID_BDROID:
+            case BEACON_PARAM_DROID_PAIRED:
+              if (beacon.setting[i] > 1) {
+                beacon.setting[i] = 0;
+              }
+              break;
           }
 
-        // location: reaction interval
+        // adjust parameter values as needed for a LOCATION beacon
         } else {
-          if (press_type == LONG_PRESS || beacon.setting[1] > 0x33) {
-            beacon.setting[1] = 0;  // can't have a reaction interval value greater than 0x33 (51) as it breaks the formula
+          switch(i) {
+
+            // reset location if it goes above 7
+            case BEACON_PARAM_LCTN_ID:
+              if (beacon.setting[i] > 7) {
+                beacon.setting[i] = 0;
+              }
+
+            // reset minimium rssi value if it goes outside of limits
+            case BEACON_PARAM_LCTN_RSSI:
+
+              // -20dBm is about 1ft from the droid and I think a reasonable lower limit
+              // -80dBm is very weak and I think a reasonable upper limit
+              // but you can change these limits if you want
+              if (beacon.setting[i] < 20 || beacon.setting[i] > 80) {
+                beacon.setting[i] = 20;
+              }
+              break;
+
           }
         }
 
-      // change beacon parameter 3
-      } else if (selected_item == 3) {
-        beacon.setting[2]++;
+      // if we get to here then we're on the activate function
+      } else {
 
-        // droid:paired with remote?
-        if (beacon.type == DROID) {
-          if (beacon.setting[2] > 1) {    // swap between paired (1) and not paired (0)
-            beacon.setting[2] = 0;
-          }
+        // if a droid beacon with the be a droid parameter enabled
+        if (beacon.type == DROID && beacon.setting[BEACON_PARAM_DROID_BDROID] != 0) {
 
-        // location:minimum rssi for a reaction
+          // create a beacon with the name DROID so as to appear as a droid to other toolboxes
+          init_advertisement_data(ble_adv_name_droid);
+
+        // otherwise initialize beacon as normal
         } else {
-          if (press_type == LONG_PRESS || beacon.setting[2] > 80) {
-                                          // -80dBm is a pretty weak signal
-            beacon.setting[2] = 20;       // from my experience an rssi of -28dBm is about 1 foot from the droid
-                                          // is there any reason to go lower than -20dBm?
-          }
+          init_advertisement_data(nullptr);
         }
 
-      // change beacon state (active or inactive)
-      } else if (selected_item == 4) {
-        init_advertisement_data();
+        // set the payload based on the beacon data
         set_payload_from_beacon();
+
+        // start advertising the beacon
         pAdvertising->start();
+
+        // change state to active beacon
         state = BEACON_EXPERT_ACTIVE;
       }
+
+      // set flag to update the display
       tft_update = true;
       break;
 
@@ -1985,7 +2096,7 @@ void button1(button_press_t press_type) {
       break;
 
     case SOUND_PLAY:
-      Serial.println("Play selected!");
+      SERIAL_PRINTLN("Play selected!");
       state = SOUND_PLAYING;
       tft_update = true;
       break;
@@ -2022,7 +2133,7 @@ void button2(button_press_t press_type) {
   static uint32_t last_time_btn2_down = 0;
   uint8_t i;
 
-  Serial.println("Button2 Press");
+  SERIAL_PRINTLN("Button 2 Press");
 
   // do button 2 stuff
   switch (state) {
@@ -2092,7 +2203,7 @@ void button2(button_press_t press_type) {
           state = BEACON_LOCATION_LIST;
         }
       } else {
-        init_advertisement_data();
+        init_advertisement_data(nullptr);
         set_payload_from_beacon();
         pAdvertising->start();
         state = BEACON_ACTIVE;
@@ -2120,6 +2231,14 @@ void button2(button_press_t press_type) {
         selected_item = 3;
       } else {
         selected_item++;
+
+        // skip expert beacon parameters that have no label
+        i = selected_item - 1;
+        if (i < NUM_BEACON_PARAMS && ((beacon.type == DROID) ? msg_beacon_droid_param[i] : msg_beacon_location_param[i]) == nullptr) {
+          selected_item++;
+        }
+
+        // return to the first beacon parameter after reaching the end
         if (selected_item >= NUM_BEACON_PARAMS+2) {
           selected_item = 0;
         }
@@ -2326,9 +2445,11 @@ void setup() {
   // just so there's no garbage in there if it gets used before being initialized.
   set_random_beacon();
 
-  // init serial monitor
-  Serial.begin(115200);
-  Serial.println("Ready!");
+  // init serial debug messaging
+  #ifdef SERIAL_DEBUG_ENABLE
+    Serial.begin(115200);
+    SERIAL_PRINTLN("Ready!");
+  #endif
 }
 
 void loop() {
@@ -2369,7 +2490,7 @@ void loop() {
 
     case SOUND_PLAYING:
       update_display();
-      Serial.println("Playing sound...");
+      SERIAL_PRINTLN("Playing sound...");
       droid_play_track();
       delay(2000);
       state = SOUND_PLAY;
@@ -2378,7 +2499,7 @@ void loop() {
 
     case VOLUME_TESTING:
       update_display();
-      Serial.println("Testing volume...");
+      SERIAL_PRINTLN("Testing volume...");
       droid_set_volume();
       droid_play_track();
       //droid_play_next_track();
@@ -2396,7 +2517,7 @@ void loop() {
 
     // do not go to sleep if the beacon is active
     if (state != BEACON_ACTIVE && state != BEACON_EXPERT_ACTIVE) {
-      Serial.println("Going to sleep.");
+      SERIAL_PRINTLN("Going to sleep.");
       delay(100);
       esp_deep_sleep_start();
     } else {
