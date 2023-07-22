@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.63 : ruthsarian@gmail.com
+/* Droid Toolbox v0.64 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * NOTE: your droid remote MUST BE OFF for this to work!
@@ -104,6 +104,8 @@
  *   ability save beacons that are defined in EXPERT mode?
  *
  * HISTORY
+ *   v0.64 : added a BLE advertising parameter that should prevent other devices from connecting to the toolbox while it is advertising
+ *           a beacon. previously, if a device did attempt such a connection, the beacon on the toolbox would stop, but you wouldn't know it.
  *   v0.63 : expert mode can now create droid beacons that will be seen by other toolboxes; you cannot connect to emulated beacons
  *           adding this feature lead me to rewrite a lot of the expert beacon display code
  *           added SERIAL_DEBUG_ENABLE which, if not defined, will prevent messages from being sent over the serial monitor
@@ -162,7 +164,7 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.63"                 // the version displayed on the splash screen at the lower right
+#define MSG_VERSION                         "v0.64"                 // the version displayed on the splash screen at the lower right
 
 #define DEFAULT_TEXT_SIZE                   2                       // a generic size used throughout 
 #define DEFAULT_TEXT_COLOR                  TFT_DARKGREY            // e.g. 'turn off your droid remote'
@@ -235,7 +237,7 @@
 #define VOLUME_SELECTED_TEXT_COLOR          TFT_GREEN
 
 #define SLEEP_AFTER                         5 * 60 * 1000  // how many milliseconds of inactivity before going to sleep/hibernation
-//#define SERIAL_DEBUG_ENABLE                 // uncomment to enable serial debug/monitor messages
+#define SERIAL_DEBUG_ENABLE                 // uncomment to enable serial debug/monitor messages
 
 // static strings used throughout DroidToolbox
 const char ble_adv_name[]               = "DROIDTLBX";              // this is the name the toolbox's beacon will appear as, keep to 10 characters or less
@@ -788,6 +790,10 @@ void set_payload_from_beacon() {
   // load the payload into the advertisement data
   pAdvertisementData->setManufacturerData(std::string(reinterpret_cast<char*>(payload), PAYLOAD_SIZE));
   pAdvertising->setAdvertisementData(*pAdvertisementData);
+
+  // prevent connection attempts while advertising a beacon
+  pAdvertising->setAdvertisementType(ADV_TYPE_NONCONN_IND);
+  pAdvertising->setScanFilter(false, true);
 }
 
 // BLE Advertising Callback
