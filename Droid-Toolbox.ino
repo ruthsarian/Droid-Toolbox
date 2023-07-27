@@ -480,11 +480,13 @@ beacon_t beacon;
 
 // Using these macros to print debug messages will make it easier to disable the printing of those messages by undefining SERIAL_DEBUG_ENABLE
 #ifdef SERIAL_DEBUG_ENABLE
+  #define SERIAL_BEGIN(x)       Serial.begin(x)
   #define SERIAL_PRINT(x)       Serial.print(x)
   #define SERIAL_PRINTLN(x)     Serial.println(x)
   #define SERIAL_PRINT2(x,y)    Serial.print(x,y)
   #define SERIAL_PRINTLN2(x,y)  Serial.println(x,y)
 #else
+  #define SERIAL_BEGIN(x)
   #define SERIAL_PRINT(x)
   #define SERIAL_PRINTLN(x)
   #define SERIAL_PRINT2(x,y)
@@ -1867,8 +1869,6 @@ void update_display() {
 void button1(button_press_t press_type);  // trying to use an enum as a parameter triggers a bug in arduino. adding an explicit prototype resolves the issue.
 void button1(button_press_t press_type) {
 
-  static uint32_t last_time_btn1 = 0;
-  static uint32_t last_time_btn1_down = 0;
   uint8_t i;
 
   SERIAL_PRINTLN("Button 1 Press");
@@ -2135,8 +2135,6 @@ void button1(button_press_t press_type) {
 void button2(button_press_t press_type);  // trying to use an enum as a parameter triggers a bug in arduino. adding an explicit prototype resolves the issue.
 void button2(button_press_t press_type) {
 
-  static uint32_t last_time_btn2 = 0;
-  static uint32_t last_time_btn2_down = 0;
   uint8_t i;
 
   SERIAL_PRINTLN("Button 2 Press");
@@ -2452,10 +2450,8 @@ void setup() {
   set_random_beacon();
 
   // init serial debug messaging
-  #ifdef SERIAL_DEBUG_ENABLE
-    Serial.begin(115200);
-    SERIAL_PRINTLN("Ready!");
-  #endif
+  SERIAL_BEGIN(115200);
+  SERIAL_PRINTLN("Ready!");
 }
 
 void loop() {
