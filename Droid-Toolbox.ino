@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.64 : ruthsarian@gmail.com
+/* Droid Toolbox v0.65 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * NOTE: your droid remote MUST BE OFF for this to work!
@@ -104,6 +104,14 @@
  *   ability save beacons that are defined in EXPERT mode?
  *
  * HISTORY
+ *   v0.65 : added support for custom fonts via OpenFontRenderer
+ *
+ *           TODO: add font support, update documentation in code
+ *                 speed up rendering process of display_list() with OFR
+ *                 on font change, pre-calculate font size for menu lists
+ *                 if OFR, doing a list, ignore font size and calculate it.
+ *                 add height scale to font defintion to fix TTF font vertical alignment issues
+ *
  *   v0.64 : added a BLE advertising parameter that should prevent other devices from connecting to the toolbox while it is advertising
  *           a beacon. previously, if a device did attempt such a connection, the beacon on the toolbox would stop, but you wouldn't know it.
  *   v0.63 : expert mode can now create droid beacons that will be seen by other toolboxes; you cannot connect to emulated beacons
@@ -153,6 +161,9 @@
  *   v0.10 : Initial Release
  */
 
+#define USE_OFR_FONTS           // uncomment to use openFontRenderer (see notes above on how to install this library)
+#define SERIAL_DEBUG_ENABLE     // uncomment to enable serial debug/monitor messages
+
 #include <TFT_eSPI.h>
 #include <SPI.h>
 #include <BLEDevice.h>
@@ -160,11 +171,19 @@
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
 
+#ifdef USE_OFR_FONTS            // load OpenFontRenderer and some fonts from https://aurekfonts.github.io/
+  #include "OpenFontRender.h"
+  #include "Aurebesh-English.h"
+  #include "Aurebeshred-Bold.h"
+  #include "Aurabesh.h"
+  #include "DroidobeshDepot-RegularModified.h"
+#endif
+
 #define C565(r,g,b)                         ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)    // macro to convert RGB values to TFT_eSPI color value
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.64"                 // the version displayed on the splash screen at the lower right
+#define MSG_VERSION                         "v0.65"                 // the version displayed on the splash screen at the lower right
 
 #define DEFAULT_TEXT_SIZE                   2                       // a generic size used throughout 
 #define DEFAULT_TEXT_COLOR                  TFT_DARKGREY            // e.g. 'turn off your droid remote'
@@ -236,8 +255,10 @@
 #define VOLUME_TEXT_COLOR                   TFT_DARKGREY
 #define VOLUME_SELECTED_TEXT_COLOR          TFT_GREEN
 
-#define SLEEP_AFTER                         5 * 60 * 1000  // how many milliseconds of inactivity before going to sleep/hibernation
-#define SERIAL_DEBUG_ENABLE                 // uncomment to enable serial debug/monitor messages
+#define SLEEP_AFTER                         5 * 60 * 1000 // how many milliseconds of inactivity before going to sleep/hibernation
+
+#define TEXT_FIT_WIDTH_MODIFIER             0.9           // the value of available width for text is multiplied by this value to determine a new available width
+                                                          // typically used when rendering lists to provide a kind of gutterspace
 
 // static strings used throughout DroidToolbox
 const char ble_adv_name[]               = "DROIDTLBX";              // this is the name the toolbox's beacon will appear as, keep to 10 characters or less
@@ -420,6 +441,48 @@ const char* msg_beacon_location_param[NUM_BEACON_PARAMS] = {
   nullptr
 };
 
+//
+// Custom Fonts
+// The OpenFontRenderer is used to display TTF fonts.
+// https://github.com/takkaO/OpenFontRender
+// 
+// How To Make A Font Header File
+// 1) convert to TTF (if needed)
+//    https://cloudconvert.com/otf-to-ttf
+// 2) reduce to only those characters we care about (if needed)
+//    https://products.aspose.app/font/generator/ttf-to-ttf
+//      !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~
+// 3) convert to header (.h) file
+//    https://notisrac.github.io/FileToCArray/
+//      uncheck static
+//      save .h file to code tree
+//      make sure font variable name in header file has no dashes in it
+//      make sure font variable in header file is type const unsigned char
+//      look at existing font header files for an example
+// 4) add #include "header.h" line near the top where other fonts are included
+// 5) add font to dtb_fonts array below
+//
+#ifdef USE_OFR_FONTS
+  typedef struct {
+    const unsigned char* data;
+    uint32_t size;
+    float y_offset;             // font baselines will vary, causing them to not appear centered vertically within the box when displaying a list/menu
+                                // this value is multiplied to the pixel font height and then added to the y position where the font is being rendered
+                                // how did i determine these values? trial and error; although i could probably use fontforge and some mild math...
+  } dtb_font_t;
+
+  dtb_font_t dtb_fonts[] = {
+    { AurebeshEnglish,                sizeof(AurebeshEnglish),                 0.09 },
+    { DroidobeshDepotRegularModified, sizeof(DroidobeshDepotRegularModified),  0.09 },
+    { Aurabesh,                       sizeof(Aurabesh),                       -0.05 },
+    { AurebeshRedBold,                sizeof(AurebeshRedBold),                -0.08 },
+  };
+
+  #define NUM_FONTS (sizeof(dtb_fonts)/sizeof(dtb_font_t))
+  OpenFontRender ofr;
+  uint8_t dtb_font = 0;
+#endif // USE_OFR_FONTS
+
 // CUSTOMIZATIONS END -- In theory you shouldn't have to edit anything below this line.
 
 // there has got to be a better way to manage expert beacon parameter variables
@@ -463,6 +526,7 @@ beacon_t beacon;
 #else
   #define BUTTON2_PIN     35  // button 2 on the TTGO T-Display is GPIO 35
   #define BAT_ADC_PIN     34  // battery monitor pin
+  //#undef USE_OFR_FONTS        // force T-Display to not use OFR? i don't think this is necessary.
 #endif
 
 #define LAZY_DEBOUNCE     10  // time to wait after a button press before considering it a good press
@@ -579,43 +643,428 @@ typedef enum {
   VOLUME_TESTING,
 } system_state_t;
 
+//
+// menus consist of a string and a state
+// the strings of the menu are displayed as a list
+// the state of the code changes to the state of string that is selected
+//
 typedef struct {
   system_state_t state;
   const char* text;
 } menu_item_t;
 
-menu_item_t top_menu[] = {
-  { SCANNER_SCANNING, msg_scanner },
-  { BEACON_TYPE_MENU, msg_beacon  }
+const menu_item_t top_menu[] = {
+  { SCANNER_SCANNING,     msg_scanner   },
+  { BEACON_TYPE_MENU,     msg_beacon    }
 };
 
-menu_item_t beacon_type_menu[] = {
-  { BEACON_LOCATION_LIST, msg_location },
-  { BEACON_DROID_LIST,    msg_droid    },
-  { BEACON_RANDOM,        msg_random   },
-  { BEACON_EXPERT,        msg_expert   },
+const menu_item_t beacon_type_menu[] = {
+  { BEACON_LOCATION_LIST, msg_location  },
+  { BEACON_DROID_LIST,    msg_droid     },
+  { BEACON_RANDOM,        msg_random    },
+  { BEACON_EXPERT,        msg_expert    },
 };
 
-menu_item_t connected_menu[] = {
-  { SOUND_GROUP, msg_sounds },
-  { VOLUME_UP,   msg_volume },
+const menu_item_t connected_menu[] = {
+  { SOUND_GROUP,          msg_sounds    },
+  { VOLUME_UP,            msg_volume    },
 };
 
-TFT_eSPI tft = TFT_eSPI();      // display interface
-bool tft_update = true;         // flag to indicate display needs to be updated
+//
+// Lists
+//
+// a list is an array of strings which is used to render a list of options on the display
+// they are derrived from menus, beacons, locations, etc.
+//
+// with the introduction of custom fonts, i need to precalculate some properties of each
+// list that is going to be rendered in order to speed-up rendering times.
+//
+// thus i've created the list object which will contain a pointer to the menu or string array 
+// that contains the contents of the list along with properties that will be used when 
+// rendering the list on screen.
+// 
 
-typedef struct {                // information for rendering lists; could probably define multiple list styles rather than a single global variable
+// this struct contains information for rendering lists
+// ofr_font_size and row_width will be calculated, for every list, every time the system font changes. 
+typedef struct {
   uint8_t  text_size;
   uint16_t text_color;
   uint8_t  text_padding;
   uint16_t selected_text_color;
   uint16_t selected_border_color;
-} tft_list_options_t;
-tft_list_options_t list_options;
+  uint16_t ofr_font_size;
+  uint16_t row_width;
+} list_render_options_t;
+
+// TODO: remove this global once lists are fully incorporated into the code
+list_render_options_t list_options;
+
+//
+// this is the list object
+//
+// it will have an array of pointers to strings that make up the content of the list
+// this array must be populated at runtime because we need to extract the strings from different
+// object types (menus, personalities, locations, etc.)
+//
+// the render_options object sets how the list will be displayed (color, default font size, etc.)
+// these will be set set based on #define lines under the customizations section at the top of this code.
+//
+typedef struct {
+  const char**          items;
+  uint8_t               num_items;
+  list_render_options_t render_options;
+} list_t;
+
+// these #define statements are index values of the global lists[] array. they will be used to indentify an individual list within the lists[] array.
+#define LIST_TOP_MENU           0
+#define LIST_BEACON_TYPE_MENU   1
+#define LIST_CONNECTED_MENU     2
+#define LIST_LOCATIONS          3
+#define LIST_PERSONALITIES      4
+#define NUM_LISTS               5
+
+// lists will be loaded via the load_lists() function. 
+list_t lists[NUM_LISTS];
 
 int8_t droid_volume = 100;      // there is no way to 'read' the current volume setting, so we'll keep track with a variable and assume it starts at full (100) volume
 uint8_t selected_item = 0;      // keep track of the currently selected option when displaying menus, options, etc.
+
+TFT_eSPI tft = TFT_eSPI();      // display interface
+bool tft_update = true;         // flag to indicate display needs to be updated
+
 system_state_t state = SPLASH;  // track the current state of the toolbox
+
+//
+// rendering lists is done with an array of strings (the items in the list)
+// these lists are coming from different variable types (menus, beacons, personalities, etc.)
+//
+// i need this function in order to extract pointers to the list item strings in each of those 
+// objects and put them into a shared type (const char**) so all the list rendering code doesn't
+// require a ton of if/else statements depending on the type of object being rendered.
+//
+// it's important the order of the items in the parent is shared in the list object so that 
+// they can share an index variable (e.g. selected_item global)
+//
+// i suppose if you want to further customize how lists displays (e.g. beacons and personalities
+// have different text colors) then you could alter this function to change those properties.
+//
+// there's probably a better way to do this, but i want to get this working
+// i'm open to suggestions. ruthsarian@gmail.com
+//
+void list_init() {
+  uint8_t i;
+
+  // populate TOP MENU list
+
+  // calculate num_items and allocate memory for items
+  lists[LIST_TOP_MENU].num_items = sizeof(top_menu) / sizeof(menu_item_t);
+  lists[LIST_TOP_MENU].items = (const char**)malloc(sizeof(char*) * lists[LIST_TOP_MENU].num_items);
+
+  // populate items
+  for (i=0; i<lists[LIST_TOP_MENU].num_items; i++) {
+    lists[LIST_TOP_MENU].items[i] = top_menu[i].text;
+  }
+
+  // set render options
+  lists[LIST_TOP_MENU].render_options.text_size             = MENU_SELECT_TEXT_SIZE;
+  lists[LIST_TOP_MENU].render_options.text_color            = MENU_SELECT_TEXT_COLOR;
+  lists[LIST_TOP_MENU].render_options.text_padding          = MENU_SELECT_TEXT_PADDING;
+  lists[LIST_TOP_MENU].render_options.selected_text_color   = MENU_SELECT_SELECTED_TEXT_COLOR;
+  lists[LIST_TOP_MENU].render_options.selected_border_color = MENU_SELECT_SELECTED_BORDER_COLOR;
+  lists[LIST_TOP_MENU].render_options.ofr_font_size         = 0;
+  lists[LIST_TOP_MENU].render_options.row_width             = 0;
+
+  //
+  // rinse and repeat
+  //
+
+  // populate BEACON TYPE MENU list
+  lists[LIST_BEACON_TYPE_MENU].num_items = sizeof(beacon_type_menu) / sizeof(menu_item_t);
+  lists[LIST_BEACON_TYPE_MENU].items = (const char**)malloc(sizeof(char*) * lists[LIST_BEACON_TYPE_MENU].num_items);
+  for (i=0; i<lists[LIST_BEACON_TYPE_MENU].num_items; i++) {
+    lists[LIST_BEACON_TYPE_MENU].items[i] = beacon_type_menu[i].text;
+  }
+  lists[LIST_BEACON_TYPE_MENU].render_options.text_size             = MENU_SELECT_TEXT_SIZE;
+  lists[LIST_BEACON_TYPE_MENU].render_options.text_color            = MENU_SELECT_TEXT_COLOR;
+  lists[LIST_BEACON_TYPE_MENU].render_options.text_padding          = MENU_SELECT_TEXT_PADDING;
+  lists[LIST_BEACON_TYPE_MENU].render_options.selected_text_color   = MENU_SELECT_SELECTED_TEXT_COLOR;
+  lists[LIST_BEACON_TYPE_MENU].render_options.selected_border_color = MENU_SELECT_SELECTED_BORDER_COLOR;
+  lists[LIST_BEACON_TYPE_MENU].render_options.ofr_font_size         = 0;
+  lists[LIST_BEACON_TYPE_MENU].render_options.row_width             = 0;
+
+  // populate CONNECTED MENU list
+  lists[LIST_CONNECTED_MENU].num_items = sizeof(connected_menu) / sizeof(menu_item_t);
+  lists[LIST_CONNECTED_MENU].items = (const char**)malloc(sizeof(char*) * lists[LIST_CONNECTED_MENU].num_items);
+  for (i=0; i<lists[LIST_CONNECTED_MENU].num_items; i++) {
+    lists[LIST_CONNECTED_MENU].items[i] = connected_menu[i].text;
+  }
+  lists[LIST_CONNECTED_MENU].render_options.text_size             = MENU_SELECT_TEXT_SIZE;
+  lists[LIST_CONNECTED_MENU].render_options.text_color            = MENU_SELECT_TEXT_COLOR;
+  lists[LIST_CONNECTED_MENU].render_options.text_padding          = MENU_SELECT_TEXT_PADDING;
+  lists[LIST_CONNECTED_MENU].render_options.selected_text_color   = MENU_SELECT_SELECTED_TEXT_COLOR;
+  lists[LIST_CONNECTED_MENU].render_options.selected_border_color = MENU_SELECT_SELECTED_BORDER_COLOR;
+  lists[LIST_CONNECTED_MENU].render_options.ofr_font_size         = 0;
+  lists[LIST_CONNECTED_MENU].render_options.row_width             = 0;
+
+  // populate LOCATIONS list
+  lists[LIST_LOCATIONS].num_items = LOCATIONS_SIZE;
+  lists[LIST_LOCATIONS].items = (const char**)malloc(sizeof(char*) * lists[LIST_LOCATIONS].num_items);
+  for (i=0; i<lists[LIST_LOCATIONS].num_items; i++) {
+    lists[LIST_LOCATIONS].items[i] = locations[i].name;
+  }
+  lists[LIST_LOCATIONS].render_options.text_size              = BEACON_SELECT_TEXT_SIZE;
+  lists[LIST_LOCATIONS].render_options.text_color             = BEACON_SELECT_TEXT_COLOR;
+  lists[LIST_LOCATIONS].render_options.text_padding           = BEACON_SELECT_TEXT_PADDING;
+  lists[LIST_LOCATIONS].render_options.selected_text_color    = BEACON_SELECT_SELECTED_TEXT_COLOR;
+  lists[LIST_LOCATIONS].render_options.selected_border_color  = BEACON_SELECT_SELECTED_BORDER_COLOR;
+  lists[LIST_LOCATIONS].render_options.ofr_font_size          = 0;
+  lists[LIST_LOCATIONS].render_options.row_width              = 0;
+
+  // populate DROID PERSONALITIES list
+  lists[LIST_PERSONALITIES].num_items = DROID_PERSONALITIES_SIZE;
+  lists[LIST_PERSONALITIES].items = (const char**)malloc(sizeof(char*) * lists[LIST_PERSONALITIES].num_items);
+  for (i=0; i<lists[LIST_PERSONALITIES].num_items; i++) {
+    lists[LIST_PERSONALITIES].items[i] = droid_personalities[i].name;
+  }
+  lists[LIST_PERSONALITIES].render_options.text_size              = BEACON_SELECT_TEXT_SIZE;
+  lists[LIST_PERSONALITIES].render_options.text_color             = BEACON_SELECT_TEXT_COLOR;
+  lists[LIST_PERSONALITIES].render_options.text_padding           = BEACON_SELECT_TEXT_PADDING;
+  lists[LIST_PERSONALITIES].render_options.selected_text_color    = BEACON_SELECT_SELECTED_TEXT_COLOR;
+  lists[LIST_PERSONALITIES].render_options.selected_border_color  = BEACON_SELECT_SELECTED_BORDER_COLOR;
+  lists[LIST_PERSONALITIES].render_options.ofr_font_size          = 0;
+  lists[LIST_PERSONALITIES].render_options.row_width              = 0;
+}
+
+// this function is precalculating ofr_font_size and row_width for all lists
+// it should be called only one time, after the system font is set/changed.
+// this front-loads all the processor-intensive calculations required to determine the
+// correct font size and render area for each list.
+//
+// if this was done on-the-fly everytime a list was rendered then we would see obvious
+// screen lag/delay every time the list was drawn on screen. so this is being done to 
+// improve UI performance
+//
+// this function needs to know how wide the area where the font will be rendered is.
+// this is typically tft.width(), but I've made it a function argument so we can do 
+// things like add gutterspace on either side of a list that this function
+// doesn't need to know about.
+//
+// the ofr font should already be loaded at this point
+void list_calculate_dynamic_font_properties() {
+  uint8_t curr_list, curr_item, num_items;
+  uint16_t font_height = 0, ofs_tmp;
+
+  // loop through all lists
+  for (curr_list=0; curr_list<NUM_LISTS; curr_list++) {
+
+    // initialize the render options we'll be calculating in a bit
+    lists[curr_list].render_options.ofr_font_size = 0;
+    lists[curr_list].render_options.row_width = 0;
+
+    // set ofr_font_size to 0 as it will not be used in this instance
+    // set the GLCD font size and calculate font_height from that
+    //tft.setTextFont(1);
+    tft.setTextSize(lists[curr_list].render_options.text_size);
+    font_height = tft.fontHeight();
+
+    #ifdef USE_OFR_FONTS
+      if (dtb_font == 0) {
+    #endif
+
+        // no need to calculate ofr_font_size since it won't be used when dtb_font is 0
+        //
+        // we are ignoring max_width completely. the assumption is you've already done your homework.
+        // but perhaps we could dynamically determine font size when dtb_font is 0... later.
+
+        // find the list item with the largest width when rendered and record to row_width
+        for (curr_item=0; curr_item<lists[curr_list].num_items; curr_item++) {
+          if (tft.textWidth(lists[curr_list].items[curr_item]) > lists[curr_list].render_options.row_width) {
+            lists[curr_list].render_options.row_width = tft.textWidth(lists[curr_list].items[curr_item]);
+          }
+        }
+
+    #ifdef USE_OFR_FONTS
+      } else {
+
+        // determine the font size to use when rendering this list
+        for (curr_item=0; curr_item<lists[curr_list].num_items; curr_item++) {
+
+          // calculate the font size that would be needed to fit within the dimensions of the viewport width and tft.fontHeight()
+          //
+          // would caluclateBoundingBox() be a better method?
+          ofs_tmp = ofr.calculateFitFontSize(tft.getViewportWidth() * TEXT_FIT_WIDTH_MODIFIER, tft.fontHeight(), ofr.getLayout(), lists[curr_list].items[curr_item]);
+
+          // if this value is smaller than what is currently stored, record the font size
+          if (lists[curr_list].render_options.ofr_font_size < 1 || ofs_tmp < lists[curr_list].render_options.ofr_font_size) {
+            lists[curr_list].render_options.ofr_font_size = ofs_tmp;
+          }
+        }
+
+        // set the font size to the newly determined ofr_font_size
+        ofr.setFontSize(lists[curr_list].render_options.ofr_font_size);
+
+        // now determine the list item with the largest width when rendered with the currently set font size
+        for (curr_item=0; curr_item<lists[curr_list].num_items; curr_item++) {
+          ofs_tmp = ofr.getTextWidth(lists[curr_list].items[curr_item]);
+          if (ofs_tmp > lists[curr_list].render_options.row_width) {
+            lists[curr_list].render_options.row_width = ofs_tmp;
+          }
+        }
+      }
+    #endif
+  }
+}
+
+// calculate and set the font size
+void dtb_set_font_size(uint8_t text_size, uint16_t width_fit, const char* str) {
+	static const char test_str[] = "Hy";
+  #ifdef USE_OFR_FONTS
+    if (text_size > 0) {
+      if (text_size > 7) {
+        ofr.setFontSize(text_size);
+      } else {
+  #endif
+			  tft.setTextSize(text_size);
+  #ifdef USE_OFR_FONTS
+        if (str == nullptr) {
+          ofr.setFontSize(ofr.calculateFitFontSize(width_fit, tft.fontHeight(), ofr.getLayout(), test_str));
+        } else {
+          ofr.setFontSize(ofr.calculateFitFontSize(width_fit, tft.fontHeight(), ofr.getLayout(), str));
+        }
+      }
+    }
+  #endif
+}
+
+// calculate the current font height
+uint16_t dtb_get_font_height() {
+  #ifdef USE_OFR_FONTS
+    if (dtb_font != 0) {
+      //return(ofr.getTextHeight("Ty"));
+      return((uint16_t)(ofr.getFontSize() & 0x0000FFFF));
+    } else {
+  #endif
+      return((uint16_t)(tft.fontHeight() & 0x7FFF));
+  #ifdef USE_OFR_FONTS
+    }
+  #endif
+}
+
+// set alignment of ofr using the tft datum values
+void set_ofr_alignment_by_datum(uint8_t d) {
+  #ifdef USE_OFR_FONTS
+  switch (d) {
+    default:
+    case L_BASELINE:
+      ofr.setAlignment(Align::Left);
+      break;
+    case C_BASELINE:
+      ofr.setAlignment(Align::Center);
+      break;
+    case R_BASELINE:
+      ofr.setAlignment(Align::Right);
+      break;
+    case TL_DATUM:
+      ofr.setAlignment(Align::TopLeft);
+      break;
+    case TC_DATUM:
+      ofr.setAlignment(Align::TopCenter);
+      break;
+    case TR_DATUM:
+      ofr.setAlignment(Align::TopRight);
+      break;
+    case ML_DATUM:
+      ofr.setAlignment(Align::MiddleLeft);
+      break;
+    case MC_DATUM:
+      ofr.setAlignment(Align::MiddleCenter);
+      break;
+    case MR_DATUM:
+      ofr.setAlignment(Align::MiddleRight);
+      break;
+    case BL_DATUM:
+      ofr.setAlignment(Align::BottomLeft);
+      break;
+    case BC_DATUM:
+      ofr.setAlignment(Align::BottomCenter);
+      break;
+    case BR_DATUM:
+      ofr.setAlignment(Align::BottomRight);
+      break;
+  }
+  #endif // USE_OFR_FONTS
+}
+
+// NOTES
+//   text_size can be a pixel height or it can be a GLCD multiplier. GLCD multiplier cannot be larger than 7, nor zero. 
+//   draw_width is only used if it's a non-GLCD font and we're being asked to calculate the font size (based on GLCD text_size)
+//
+void dtb_draw_string(const char* str, int32_t draw_x, int32_t draw_y, uint32_t draw_width, uint16_t text_size, uint16_t text_color, uint8_t text_datum) {
+
+  // if text_size is 0 then assume the font has already been set outside of this function and it just needs to be drawn.
+  if (text_size > 0) {
+
+    // set GLCD font; not necessary, we're never setting this value to anything else in the code
+    //tft.setTextFont(1);
+
+    #ifdef USE_OFR_FONTS
+      // if text_size is less than 8 assume it's a GLCD multiplier, otherwise assume it's a pixel height for use with OFR
+      if (dtb_font == 0 || text_size < 8) {
+    #endif
+
+        tft.setTextSize((uint8_t)(text_size & 0x00FF));
+
+    #ifdef USE_OFR_FONTS
+      }
+    #endif
+  }
+
+  #ifdef USE_OFR_FONTS
+
+  // if we're using the GLCD font
+  if (dtb_font == 0) {
+
+  #endif  // USE_OFR_FONTS
+
+    // set alignment
+    tft.setTextDatum(text_datum);
+
+    // set color
+    tft.setTextColor(text_color);
+
+    // draw the string
+    tft.drawString(str, draw_x, draw_y);
+
+  #ifdef USE_OFR_FONTS
+
+  // else we're using a TTF font
+  } else {
+
+    if (text_size != 0) {
+
+      // set text alignment
+      set_ofr_alignment_by_datum(text_datum);
+
+      // if text_size is less than 8 it's a GLCD font size
+      // calculate and set the actual font size based on tft.fontHeight()
+      if (text_size < 8) {
+        ofr.setFontSize(ofr.calculateFitFontSize(draw_width, tft.fontHeight(), ofr.getLayout(), str));
+
+      // else assume text_size is a pixel height
+      } else {
+        ofr.setFontSize(text_size);
+      }
+    }
+
+    // adjust position of the string
+    draw_y = draw_y + (ofr.getFontSize() * dtb_fonts[dtb_font - 1].y_offset);
+
+    // draw the string
+    ofr.drawString(str, draw_x, draw_y, text_color, ofr.getBackgroundColor(), ofr.getLayout());
+  }
+
+  #endif  // USE_OFR_FONTS
+}
 
 personality_t* get_droid_personality(uint8_t id) {
   uint8_t i;
@@ -1048,49 +1497,56 @@ void reset_screen(void) {
   tft.setCursor(0, 0);
 }
 
-void display_list(const char **items, uint8_t num_items) {
+//void display_list(const char **items, uint8_t num_items) {
+void display_list(uint8_t list_index) {
+  uint8_t rows, row_padding, max_padding, i;
+  uint16_t row_height, row_width, text_color, font_height;
   int16_t  y = 0;
-  int16_t  w = 0;
-  uint16_t row_height, row_width;
-  uint8_t  row_padding, rows, i, selected;
-  int8_t   max_padding;
 
-  // set menu font size
-  tft.setTextSize(list_options.text_size);
+  // get the pixel height of the font
+  #ifdef USE_OFR_FONTS
+    if (dtb_font != 0) {
+      font_height = lists[list_index].render_options.ofr_font_size;
+    } else {
+  #endif
+      tft.setTextSize(lists[list_index].render_options.text_size);
+      font_height = tft.fontHeight();
+  #ifdef USE_OFR_FONTS
+    }
+  #endif
 
-  // calculate row padding
-  row_padding = list_options.text_padding;
-
+  // calculate vertical padding (aka row_padding) limits and update row_padding
+  // if currently set value is outside of available limits
+  // 
   // since font size can be changed via a define, or that this code might run on a screen
   // that i haven't tested with, check to make sure padding isn't so big that we can't show 
   // at least 2 menu items on the screen.
-  max_padding = (tft.getViewportHeight() - (tft.fontHeight() * 2) - 4)/6;
+  //
+  // divide the available space by 6; padding top/bottom of each item (4) + leave an extra gap at the very top and very bottom
+  row_padding = lists[list_index].render_options.text_padding;
+  max_padding = (tft.getViewportHeight() - (font_height * 2))/6;
   if (max_padding < 1) {
     row_padding = 0;
   } else if (max_padding < row_padding) {
     row_padding = max_padding;
   }
 
-  // calculate how tall each row will be
-  row_height = tft.fontHeight() + (row_padding * 2);
+  // calculate how tall each row will be; font height + top and bottom padding + border width
+  row_height = font_height + (row_padding * 2);
 
   // calculate how many rows will fit within the screen
   rows = tft.getViewportHeight() / row_height;
 
-  // find the widest menu item and use that to determine the width of the box for the selected item
-  row_width = 0;
-  for (i = 0; i < num_items; i++) {
-    if (tft.textWidth(items[i]) > row_width) {
-      row_width = tft.textWidth(items[i]);
-    }
-  }
-  
-  // add some horizontal padding to the box based on row padding
-  row_width += (row_padding * 4);
+  // pickup the precalculated row_width
+  row_width = lists[list_index].render_options.row_width;
 
-  // datum tells tft.drawString() where to draw the string relative to the passed x,y values
-  // TC = top, center; this helps center the string without having to calculate the position myself
-  tft.setTextDatum(TC_DATUM);
+  // add some horizontal padding, if there's room for it.
+  //
+  // should calculate a tft.getViewPortWidth() value earlier in this function
+  // which has side gutter space subtracted ahead of time...
+  if (row_width < tft.getViewportWidth()) {
+    row_width = row_width + ((tft.getViewportWidth() - row_width)/4);
+  }
 
   // LIST RENDERING METHODOLOGY:
   //   to give a sense of moving through a menu that's taller than the screen, i want the selected item to be
@@ -1100,10 +1556,10 @@ void display_list(const char **items, uint8_t num_items) {
   //   i tested several different approaches and i found this "feels" right given the limited screen space
 
   // is the list larger than the screen?
-  if (num_items > rows && rows >= 1)  {
+  if (lists[list_index].num_items > rows && rows >= 1)  {
 
     // where should the selected item appear on screen?
-    y = ((tft.getViewportHeight() - row_height) / (num_items - 1)) * selected_item;
+    y = ((tft.getViewportHeight() - row_height) / (lists[list_index].num_items - 1)) * selected_item;
 
     // where should the list start on (or off) screen in order to put the selected item at the 
     // previously calculated location?
@@ -1111,145 +1567,74 @@ void display_list(const char **items, uint8_t num_items) {
 
   // entire list will fit on the screen, vertically center it
   } else {
-    y = (tft.getViewportHeight() - (row_height * num_items))/2;
+
+    // y is set to where the top of the first menu item will be rendered
+    y = (tft.getViewportHeight() - (row_height * lists[list_index].num_items))/2;
   }
 
   // draw the list, starting at the previously calculated position (y)
-  for (i = 0; i < num_items; i++) {
+  for (i = 0; i < lists[list_index].num_items; i++) {
 
     // is the current list item selected?
     if (i == selected_item) {
 
       // draw a box around the list item
       tft.drawRect(
-        (tft.getViewportWidth() / 2) - (row_width / 2),
+        ((tft.getViewportWidth() - row_width) / 2),
         y,
         row_width,
         row_height,
-        list_options.selected_border_color
+        lists[list_index].render_options.selected_border_color
       );
 
       // set the text color for selected list items
-      tft.setTextColor(list_options.selected_text_color);
+      //tft.setTextColor(list_options.selected_text_color);
+      text_color = lists[list_index].render_options.selected_text_color;
     } else {
 
       // this item is not selected, set its text color to the normal color
-      tft.setTextColor(list_options.text_color);
+      //tft.setTextColor(list_options.text_color);
+      text_color = lists[list_index].render_options.text_color;
     }
 
     // draw the list item on the screen
-    tft.drawString(items[i], tft.getViewportWidth()/2, y + row_padding + 1);    // the +1 here is to compensate for the box being slightly vertically off-center
+    if (lists[list_index].render_options.ofr_font_size != 0) {
+      dtb_draw_string(lists[list_index].items[i], tft.getViewportWidth()/2,  y + row_padding, row_width, lists[list_index].render_options.ofr_font_size, text_color, TC_DATUM);   // TC_DATUM
+    } else {
+      dtb_draw_string(lists[list_index].items[i], tft.getViewportWidth()/2,  y + row_padding, row_width, lists[list_index].render_options.text_size, text_color, TC_DATUM);       // TC_DATUM
+    }
 
     // increment y for the next list item
     y += row_height;
   }
 }
 
-void display_captioned_menu(const char* caption, menu_item_t* menu_items, uint8_t num_items) {
-  uint8_t h, i;
-
-  const char** list_items;
-
-  //reset_screen(); // necessary? we call this from update_display already...
-
-  // set size, color, and datum
-  tft.setTextSize(MENU_SELECT_CAPTION_TEXT_SIZE);
-  tft.setTextColor(MENU_SELECT_CAPTION_TEXT_COLOR);
-  tft.setTextDatum(TC_DATUM);
+void display_captioned_menu(const char* caption, uint8_t list_index) {
+  uint8_t h;
 
   // draw menu caption
-  tft.drawString(caption, tft.width()/2, MENU_SELECT_TEXT_PADDING);
+  dtb_draw_string(caption, tft.width()/2, MENU_SELECT_TEXT_PADDING, tft.width() * TEXT_FIT_WIDTH_MODIFIER, MENU_SELECT_CAPTION_TEXT_SIZE, MENU_SELECT_CAPTION_TEXT_COLOR, TC_DATUM);
 
   // calculate viewport dimensions for subsequent menu
   h = tft.fontHeight() + (MENU_SELECT_TEXT_PADDING * 2);
   tft.setViewport(0, h, tft.width(), tft.height()-h);
 
-  // set display options for the menu
-  list_options.text_size = MENU_SELECT_TEXT_SIZE;
-  list_options.text_color = MENU_SELECT_TEXT_COLOR;
-  list_options.selected_text_color = MENU_SELECT_SELECTED_TEXT_COLOR;
-  list_options.selected_border_color = MENU_SELECT_SELECTED_BORDER_COLOR;
-  list_options.text_padding = MENU_SELECT_TEXT_PADDING;
-
-  // i feel a little dirty about using malloc like this; maybe i should just declare a fixed array and assign as necessary???
-  list_items = (const char**)malloc(sizeof(char*)*num_items);
-  for(i=0;i<num_items;i++) {
-    list_items[i] = menu_items[i].text;
-  }
-
   // display the menu
-  display_list(list_items, num_items);
-
-  // remove all traces of my evildoing
-  free(list_items);
+  display_list(list_index);
 }
 
-void display_beacon_menu(const char* caption, const char** list_items, uint8_t num_items) {
-  uint8_t h, i;
-
-  // set size, color, and datum
-  tft.setTextSize(BEACON_SELECT_CAPTION_TEXT_SIZE);
-  tft.setTextColor(BEACON_SELECT_CAPTION_TEXT_COLOR);
-  tft.setTextDatum(TC_DATUM);
+void display_beacon_menu(const char* caption, uint8_t list_index) {
+  uint8_t h;
 
   // draw menu caption
-  tft.drawString(caption, tft.width()/2, BEACON_SELECT_TEXT_PADDING);
+  dtb_draw_string(caption, tft.width()/2, MENU_SELECT_TEXT_PADDING, tft.width() * TEXT_FIT_WIDTH_MODIFIER, BEACON_SELECT_CAPTION_TEXT_SIZE, BEACON_SELECT_CAPTION_TEXT_COLOR, TC_DATUM);
 
   // calculate viewport dimensions for subsequent menu
   h = tft.fontHeight() + (BEACON_SELECT_TEXT_PADDING * 2);
   tft.setViewport(0, h, tft.width(), tft.height()-h);
 
-  // set display options for the menu
-  list_options.text_size = BEACON_SELECT_TEXT_SIZE;
-  list_options.text_color = BEACON_SELECT_TEXT_COLOR;
-  list_options.selected_text_color = BEACON_SELECT_SELECTED_TEXT_COLOR;
-  list_options.selected_border_color = BEACON_SELECT_SELECTED_BORDER_COLOR;
-  list_options.text_padding = BEACON_SELECT_TEXT_PADDING;
-
   // display the menu
-  display_list(list_items, num_items);
-}
-
-void display_droid_beacon_list() {
-
-  uint8_t i, num_items = 0;
-  const char** list_items;
-
-  num_items = emulatable_personalities_size;
-
-  // create a char* array to pass to display_list()
-  list_items = (const char**)malloc(sizeof(char*)*num_items);
-
-  for(i=0; i<num_items; i++) {
-    list_items[i] = emulatable_personalities[i]->name;
-  }
-
-  // display the menu
-  display_beacon_menu(msg_select_beacon, list_items, num_items);
-
-  // free the malloc'd memory
-  free(list_items);
-}
-
-// generate a list of locations to choose from and display them in a menu
-void display_location_beacon_list() {
-  uint8_t i, num_items;
-  const char** list_items;
-
-  num_items = LOCATIONS_SIZE;
-
-  // create a char* array to pass to display_list()
-  list_items = (const char**)malloc(sizeof(char*)*num_items);
-
-  for(i=0; i<num_items; i++) {
-    list_items[i] = locations[i].name;
-  }
-
-  // display the menu
-  display_beacon_menu(msg_select_beacon, list_items, num_items);
-
-  // free the malloc'd memory
-  free(list_items);
+  display_list(list_index);
 }
 
 void display_beacon_control() {
@@ -1334,53 +1719,62 @@ void display_beacon_control() {
 
 // display the splash screen seen when the program starts
 void display_splash() {
-  uint16_t y = 0;
+  uint16_t y = 0, c;
+  uint8_t tmp_font;
   char msg[MSG_LEN_MAX];
 
-  // surely there's an easier way to vertically position the splash screen text
+  // location the Y position to begin drawing to center vertically the text
   tft.setTextSize(1);
-  y = (tft.height() - ((tft.fontHeight() * (SPLASH_TEXT_SIZE + 1)) + (tft.fontHeight() * SPLASH_TEXT_SIZE * 5))) / 2;
+  y = (tft.height() - (tft.fontHeight() * ((SPLASH_TEXT_SIZE * 6) + 1))) / 2;
   tft.setCursor(0, y);
 
-  tft.setTextDatum(TC_DATUM);
-
   // title
-  tft.setTextSize(SPLASH_TEXT_SIZE + 1);
-  tft.setTextColor(SPLASH_TITLE_COLOR);
-  tft.drawString(msg_title, tft.width()/2, y);
-  y += tft.fontHeight();
+  dtb_draw_string(msg_title, tft.width()/2, y, tft.width(), SPLASH_TEXT_SIZE + 1, SPLASH_TITLE_COLOR, TC_DATUM);
+  //y += tft.fontHeight();
+  y += dtb_get_font_height();
 
   // contact
-  tft.setTextSize(SPLASH_TEXT_SIZE);
-  tft.setTextColor(SPLASH_SUBTITLE_COLOR);
-  tft.drawString(msg_email, tft.width()/2, y);
-  y += (tft.fontHeight() * 2);
+  dtb_draw_string(msg_email, tft.width()/2, y, tft.width() * 0.8, SPLASH_TEXT_SIZE, SPLASH_SUBTITLE_COLOR, TC_DATUM);
+  //y += (tft.fontHeight() * 2);
+  y += (dtb_get_font_height() * 2);
 
   // press any button...
-  tft.setTextColor(SPLASH_TEXT_COLOR);
-  tft.drawString(msg_continue2, tft.width()/2, y);
-  y += tft.fontHeight();
-  tft.drawString(msg_continue1, tft.width()/2, y);
+  dtb_draw_string(msg_continue1, tft.width()/2, y, tft.width() * 0.8, SPLASH_TEXT_SIZE, SPLASH_TEXT_COLOR, TC_DATUM);
+  //y += tft.fontHeight();
+  y += dtb_get_font_height();
+  dtb_draw_string(msg_continue2, tft.width()/2, y, tft.width() * 0.6, SPLASH_TEXT_SIZE, SPLASH_TEXT_COLOR, TC_DATUM);
+
+  #ifdef USE_OFR_FONTS
+    // backup dtb_font
+    tmp_font = dtb_font;
+
+    // set dtb_font to glcd so version and bat are always displayed in GLCD
+    // if this is useless, just comment out the line below.
+    dtb_font = 0;
+  #endif
 
   // version
-  tft.setTextColor(SPLASH_VERSION_COLOR);
-  tft.setTextDatum(BR_DATUM);
-  tft.drawString(msg_version, tft.width()-0, tft.height());
+  dtb_draw_string(msg_version, tft.width(), tft.height(), tft.width()/2, SPLASH_TEXT_SIZE, SPLASH_VERSION_COLOR, BR_DATUM);
 
   // battery voltage
-  tft.setTextDatum(BL_DATUM);
   y = (analogRead(BAT_ADC_PIN) * 2 * 3.3 * 1000) / 4096;
+  c = SPLASH_VERSION_COLOR;
   if (y < 3400) {
-    tft.setTextColor(C565(128,0,0));        // need to charge the battery
+    c = C565(128,0,0);        // need to charge the battery
   } else if (y < 3800) {
-    tft.setTextColor(C565(96,96,0));        // battery is getting low
+    c = C565(96,96,0);        // battery is getting low
   } else if (y < 4400) {
-    tft.setTextColor(C565(0,128,0));        // battery is charged
+    c = C565(0,128,0);        // battery is charged
   } else {
-    tft.setTextColor(SPLASH_VERSION_COLOR); // you're probably on USB
+    c = SPLASH_VERSION_COLOR; // you're probably on USB
   }
   snprintf(msg, MSG_LEN_MAX, "%s:%.2fV", (y<4400 ? "BAT" : "PWR"), (y / (float)1000));
-  tft.drawString(msg, 0, tft.height());
+  dtb_draw_string(msg, 0, tft.height(), tft.width()/2, SPLASH_TEXT_SIZE, c, BL_DATUM);
+
+  #ifdef USE_OFR_FONTS
+    // restore dtb_font
+    dtb_font = tmp_font;
+  #endif
 }
 
 void display_scanner_results() {
@@ -1395,7 +1789,12 @@ void display_scanner_results() {
   tft.setTextSize(DROID_REPORT_TEXT_SIZE);
   tft.setTextColor(DROID_REPORT_COLOR);
   tft.setTextDatum(TC_DATUM);
-  tft.drawString(msg_droid_report, tft.width()/2, 0);
+  //tft.drawString(msg_droid_report, tft.width()/2, 0);
+
+  dtb_draw_string(msg_droid_report, 
+    tft.width()/2, 0, tft.width() * TEXT_FIT_WIDTH_MODIFIER, DROID_REPORT_TEXT_SIZE, DROID_REPORT_COLOR, TC_DATUM
+  );
+
 
   // add a gap after the header
   if (droid_count > 0) {
@@ -1469,12 +1868,20 @@ void display_scanner_results() {
 
   // display message that no droids were found
   } else {
-    tft.setTextSize(DROID_REPORT_TEXT_SIZE + 1);
-    tft.setTextColor(ACTION_RESULT_NG_TEXT_COLOR);
-    tft.setTextDatum(TC_DATUM);
-    y = (tft.height()/2) - tft.fontHeight();
-    tft.drawString(msg_no_droids1, tft.width()/2, y);
-    tft.drawString(msg_no_droids2, tft.width()/2, y + tft.fontHeight());
+
+    // set the font size
+    dtb_set_font_size(DROID_REPORT_TEXT_SIZE + 1, tft.width() * TEXT_FIT_WIDTH_MODIFIER, msg_no_droids1);
+
+    // calculate where to start rendering the message
+    y = (tft.height()/2) - dtb_get_font_height();
+
+    // render the message
+    dtb_draw_string(msg_no_droids1, 
+      tft.width()/2, y, 0, 0, ACTION_RESULT_NG_TEXT_COLOR, TC_DATUM
+    );
+    dtb_draw_string(msg_no_droids2, 
+      tft.width()/2, y + dtb_get_font_height(), 0, 0, ACTION_RESULT_NG_TEXT_COLOR, TC_DATUM
+    );
   }
 }
 
@@ -1767,12 +2174,21 @@ void display_beacon_expert() {
 
 void update_display() {
   uint16_t y;
+  uint32_t ts, te;
 
   if (tft_update != true) {
     return;
   }
 
+  ts = millis();
+
   reset_screen();
+
+  te = millis();
+  Serial.print("Reset time: ");
+  Serial.println(te - ts);
+
+  ts = millis();
 
   switch (state) {
 
@@ -1791,34 +2207,42 @@ void update_display() {
       break;
 
     case CONNECTED_MENU:         // display_connected_menu()
-      display_captioned_menu(msg_select, connected_menu, sizeof(connected_menu) / sizeof(menu_item_t));
+      display_captioned_menu(msg_select, LIST_CONNECTED_MENU);
       break;
 
     case SCANNER_CONNECTED:      // display_connected()
-      tft.setTextDatum(MC_DATUM);
-      tft.setTextSize(ACTION_TEXT_SIZE);
-      tft.setTextColor(ACTION_RESULT_OK_TEXT_COLOR);
-      tft.drawString(msg_scanner_connected, tft.width()/2, tft.height()/2);
+      dtb_set_font_size(ACTION_TEXT_SIZE, tft.width() * TEXT_FIT_WIDTH_MODIFIER, msg_scanner_connected);
+      dtb_draw_string(msg_scanner_connected, 
+        tft.getViewportWidth()/2, (tft.getViewportHeight()/2) - (dtb_get_font_height()/2), 0, 0, ACTION_RESULT_OK_TEXT_COLOR, TC_DATUM
+      );
       break;
 
     case SCANNER_CONNECT_FAILED: // display_connect_failed()
-      tft.setTextDatum(TC_DATUM);
-      tft.setTextSize(ACTION_TEXT_SIZE);
-      tft.setTextColor(ACTION_RESULT_NG_TEXT_COLOR);
-      tft.drawString(msg_connect, tft.width()/2, (tft.height()/2) - tft.fontHeight());
-      tft.drawString(msg_failed, tft.width()/2, (tft.height()/2));
+      dtb_set_font_size(ACTION_TEXT_SIZE, tft.width() * TEXT_FIT_WIDTH_MODIFIER, msg_scanner_connected);
+      dtb_draw_string(msg_connect, 
+        tft.getViewportWidth()/2, (tft.getViewportHeight()/2) - dtb_get_font_height(), 0, 0, ACTION_RESULT_NG_TEXT_COLOR, TC_DATUM
+      );
+      dtb_draw_string(msg_failed, 
+        tft.getViewportWidth()/2, (tft.getViewportHeight()/2), 0, 0, ACTION_RESULT_NG_TEXT_COLOR, TC_DATUM
+      );
       break;
 
     case SCANNER_CONNECTING:     // display_connecting()
-      tft.setTextDatum(TC_DATUM);
-      tft.setTextSize(DEFAULT_TEXT_SIZE);
-      tft.setTextColor(DEFAULT_TEXT_COLOR);
-      tft.drawString(msg_turn_off_remote1, tft.width()/2, 0);
-      tft.drawString(msg_turn_off_remote2, tft.width()/2, tft.fontHeight());
-      tft.setTextDatum(MC_DATUM);
-      tft.setTextSize(ACTION_TEXT_SIZE);
-      tft.setTextColor(ACTION_TEXT_COLOR);
-      tft.drawString(msg_scanner_connecting, tft.width()/2, tft.height()/2);
+
+      // display message at top of screen to turn off the droid's remote
+      dtb_set_font_size(DEFAULT_TEXT_SIZE, tft.width() * TEXT_FIT_WIDTH_MODIFIER, msg_turn_off_remote1);
+      dtb_draw_string(msg_turn_off_remote1, 
+        tft.width()/2, 0, 0, 0, DEFAULT_TEXT_COLOR, TC_DATUM
+      );
+      dtb_draw_string(msg_turn_off_remote2, 
+        tft.width()/2, dtb_get_font_height(), 0, 0, DEFAULT_TEXT_COLOR, TC_DATUM
+      );
+
+      // display CONNECTING message
+      dtb_set_font_size(ACTION_TEXT_SIZE, tft.width() * TEXT_FIT_WIDTH_MODIFIER, msg_scanner_connecting);
+      dtb_draw_string(msg_scanner_connecting, 
+        tft.getViewportWidth()/2, (tft.getViewportHeight()/2) - (dtb_get_font_height()/2), 0, 0, ACTION_TEXT_COLOR, TC_DATUM
+      );
       break;
 
     case SCANNER_RESULTS:        // display_scanner_results()
@@ -1826,10 +2250,12 @@ void update_display() {
       break;
 
     case SCANNER_SCANNING:       // display_scanning()
-      tft.setTextDatum(MC_DATUM);
-      tft.setTextSize(ACTION_TEXT_SIZE);
-      tft.setTextColor(ACTION_TEXT_COLOR);
-      tft.drawString(msg_scanner_active, tft.width()/2, tft.height()/2);
+
+      // for wahtever reason, using TC_DATUM instead of MC_DATUM renders more vertically-centered
+      dtb_set_font_size(ACTION_TEXT_SIZE, tft.width() * TEXT_FIT_WIDTH_MODIFIER, msg_scanner_active);
+      dtb_draw_string(msg_scanner_active, 
+        tft.getViewportWidth()/2, (tft.getViewportHeight()/2) - (dtb_get_font_height()/2), 0, 0, ACTION_TEXT_COLOR, TC_DATUM
+      );
       break;
 
     case BEACON_EXPERT_ACTIVE:  // display_beacon_expert()
@@ -1843,25 +2269,29 @@ void update_display() {
       break;
 
     case BEACON_DROID_LIST:      // display_droid_beacon_list()
-      display_droid_beacon_list();
+      display_beacon_menu(msg_select_beacon, LIST_PERSONALITIES);
       break;
 
     case BEACON_LOCATION_LIST:   // display_location_beacon_list()
-      display_location_beacon_list();
+      display_beacon_menu(msg_select_beacon, LIST_LOCATIONS);
       break;
 
     case BEACON_TYPE_MENU:       // display_beacon_type_menu()
-      display_captioned_menu(msg_select_beacon_type, beacon_type_menu, sizeof(beacon_type_menu) / sizeof(menu_item_t));
+      display_captioned_menu(msg_select_beacon_type, LIST_BEACON_TYPE_MENU);
       break;
 
     case TOP_MENU:               // display_top_menu()
-      display_captioned_menu(msg_select, top_menu, sizeof(top_menu) / sizeof(menu_item_t));
+      display_captioned_menu(msg_select, LIST_TOP_MENU);
       break;
 
     case SPLASH:                 // display_splash()
       display_splash();
       break;
   }
+
+  te = millis();
+  Serial.print("Update time: ");
+  Serial.println(te - ts);
 
   tft_update = false;
 }
@@ -1874,9 +2304,40 @@ void button1(button_press_t press_type) {
   SERIAL_PRINTLN("Button 1 Press");
 
   switch (state) {
+
+    // on splash screen
     case SPLASH:
-      state = TOP_MENU;
-      selected_item = 0;
+
+      // only swap fonts if USE_OFR_FONTS is defined
+      #ifdef USE_OFR_FONTS
+
+        // a long button1 press will cause the font to change
+        if (press_type == LONG_PRESS) {
+            dtb_font++;
+            if (dtb_font > NUM_FONTS) {
+              dtb_font = 0;
+            }
+
+            // load the new font
+            ofr.unloadFont();
+            if (dtb_font != 0 && ofr.loadFont(dtb_fonts[dtb_font - 1].data, dtb_fonts[dtb_font - 1].size)) {
+              dtb_font = 0;
+            }
+
+            // recalculate font properties based on new font
+            list_calculate_dynamic_font_properties();
+
+        // otherwise go to the top menu
+        } else {
+      #endif
+
+        state = TOP_MENU;
+        selected_item = 0;
+
+      #ifdef USE_OFR_FONTS
+        }
+      #endif
+
       tft_update = true;
       break;
 
@@ -2391,6 +2852,11 @@ void setup() {
   tft.setRotation(3);
   reset_screen();
 
+  // attach ofr to tft
+  #ifdef USE_OFR_FONTS
+    ofr.setDrawer(tft);  
+  #endif
+
   // setup buttons as input
   pinMode(BUTTON1_PIN, INPUT);
   pinMode(BUTTON2_PIN, INPUT);
@@ -2448,6 +2914,10 @@ void setup() {
 
   // just so there's no garbage in there if it gets used before being initialized.
   set_random_beacon();
+
+  // initialize the lists used for rendering menus
+  list_init();
+  list_calculate_dynamic_font_properties();
 
   // init serial debug messaging
   SERIAL_BEGIN(115200);
