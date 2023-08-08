@@ -415,10 +415,10 @@ typedef struct {
 location_t locations[] = {
 // ID,    NAME
   { 0x01, "Marketplace"  },
-  { 0x02, "Behind Depot" },
+  { 0x02, "Droid Depot"  },
   { 0x03, "Resistance"   },
   { 0x04, "Unknown"      },
-  { 0x05, "Droid Depot"  },
+  { 0x05, "Cantina"      },
   { 0x06, "Dok Ondar's"  },
   { 0x07, "First Order"  },
 };
@@ -918,19 +918,36 @@ void list_calculate_dynamic_font_properties() {
 // calculate and set the font size
 void dtb_set_font_size(uint8_t text_size, uint16_t width_fit, const char* str) {
 	static const char test_str[] = "Hy";
+  uint32_t tmp_size = 0;
+
+  if (text_size > 0 && text_size < 8) {
+    tft.setTextSize(text_size);
+  }
+
   #ifdef USE_OFR_FONTS
-    if (text_size > 0) {
+    if (dtb_font != 0) {
       if (text_size > 7) {
         ofr.setFontSize(text_size);
       } else {
-  #endif
-			  tft.setTextSize(text_size);
-  #ifdef USE_OFR_FONTS
-        if (str == nullptr) {
-          ofr.setFontSize(ofr.calculateFitFontSize(width_fit, tft.fontHeight(), ofr.getLayout(), test_str));
+
+        // stupid bug; ofr.calculateFitFontSize() doesn't light a height that's below something like 16, so...
+        if (text_size == 1) {
+          tmp_size = tft.fontHeight() * 2;
         } else {
-          ofr.setFontSize(ofr.calculateFitFontSize(width_fit, tft.fontHeight(), ofr.getLayout(), str));
+          tmp_size = tft.fontHeight();
         }
+      
+        if (str == nullptr) {
+          tmp_size = ofr.calculateFitFontSize(width_fit, tmp_size, ofr.getLayout(), test_str);
+        } else {
+          tmp_size = ofr.calculateFitFontSize(width_fit, tmp_size, ofr.getLayout(), str);
+        }
+
+        // readajust tmp_size if we're doing the bug workaround
+        if (text_size == 1) {
+          tmp_size = tmp_size / 2;
+        }
+        ofr.setFontSize(tmp_size);
       }
     }
   #endif
@@ -938,10 +955,11 @@ void dtb_set_font_size(uint8_t text_size, uint16_t width_fit, const char* str) {
 
 // calculate the current font height
 uint16_t dtb_get_font_height() {
+  static const char test_str[] = "Hy";
   #ifdef USE_OFR_FONTS
     if (dtb_font != 0) {
-      //return(ofr.getTextHeight("Ty"));
-      return((uint16_t)(ofr.getFontSize() & 0x0000FFFF));
+      return((uint16_t)(ofr.getTextHeight(test_str) & 0x0000FFFF));
+      //return((uint16_t)(ofr.getFontSize() & 0x0000FFFF));
     } else {
   #endif
       return((uint16_t)(tft.fontHeight() & 0x7FFF));
@@ -1724,9 +1742,16 @@ void display_splash() {
   char msg[MSG_LEN_MAX];
 
   // location the Y position to begin drawing to center vertically the text
-  tft.setTextSize(1);
-  y = (tft.height() - (tft.fontHeight() * ((SPLASH_TEXT_SIZE * 6) + 1))) / 2;
+  //tft.setTextSize(1);
+  dtb_set_font_size(1, tft.getViewportWidth(), nullptr);
+  //y = (tft.height() - (tft.fontHeight() * ((SPLASH_TEXT_SIZE * 6) + 1))) / 2;
+  y = (tft.height() - (dtb_get_font_height() * ((SPLASH_TEXT_SIZE * 6) + 1))) / 2;
   tft.setCursor(0, y);
+
+  Serial.print("dtb_get_font_height(): ");
+  Serial.println(dtb_get_font_height());
+
+  // TEXT_FIT_WIDTH_MODIFIER
 
   // title
   dtb_draw_string(msg_title, tft.width()/2, y, tft.width(), SPLASH_TEXT_SIZE + 1, SPLASH_TITLE_COLOR, TC_DATUM);
@@ -2386,7 +2411,7 @@ void button1(button_press_t press_type) {
       break;
 
     case BEACON_LOCATION_LIST:
-      set_location_beacon(locations[selected_item].id);
+      set_location_beacon(1[selected_item].id);
       state = BEACON_ACTIVATE;
       tft_update = true;
       break;
