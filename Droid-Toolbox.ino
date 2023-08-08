@@ -394,10 +394,10 @@ typedef struct {
 location_t locations[] = {
 // ID,    NAME
   { 0x01, "Marketplace"  },
-  { 0x02, "Behind Depot" },
+  { 0x02, "Droid Depot"  },
   { 0x03, "Resistance"   },
   { 0x04, "Unknown"      },
-  { 0x05, "Droid Depot"  },
+  { 0x05, "Alert"        },
   { 0x06, "Dok Ondar's"  },
   { 0x07, "First Order"  },
 };
