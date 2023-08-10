@@ -414,13 +414,13 @@ typedef struct {
 //
 location_t locations[] = {
 // ID,    NAME
-  { 0x01, "Marketplace"  },
-  { 0x02, "Droid Depot"  },
-  { 0x03, "Resistance"   },
-  { 0x04, "Unknown"      },
-  { 0x05, "Cantina"      },
-  { 0x06, "Dok Ondar's"  },
-  { 0x07, "First Order"  },
+  { 0x01, "Marketplace" },
+  { 0x02, "Droid Depot" },
+  { 0x03, "Resistance"  },
+  { 0x04, "Unknown"     },
+  { 0x05, "Alert"       },
+  { 0x06, "Dok Ondar's" },
+  { 0x07, "First Order" },
 };
 
 #define LOCATIONS_SIZE  sizeof(locations)/sizeof(location_t)
@@ -1018,6 +1018,7 @@ void set_ofr_alignment_by_datum(uint8_t d) {
 //   draw_width is only used if it's a non-GLCD font and we're being asked to calculate the font size (based on GLCD text_size)
 //
 void dtb_draw_string(const char* str, int32_t draw_x, int32_t draw_y, uint32_t draw_width, uint16_t text_size, uint16_t text_color, uint8_t text_datum) {
+  uint8_t height_offset = 0;
 
   // if text_size is 0 then assume the font has already been set outside of this function and it just needs to be drawn.
   if (text_size > 0) {
@@ -1068,6 +1069,11 @@ void dtb_draw_string(const char* str, int32_t draw_x, int32_t draw_y, uint32_t d
       if (text_size < 8) {
         ofr.setFontSize(ofr.calculateFitFontSize(draw_width, tft.fontHeight(), ofr.getLayout(), str));
 
+        // we're sizing based on the GLCD font size. our new font height will likely be smaller than the
+        // GLCD font height, so we add a small offset as half the difference between the two font heights
+        // to vertically center this text within the area where the GLCD font would have been
+        height_offset = (tft.fontHeight() - ofr.getTextHeight("Hg")) / 2;
+
       // else assume text_size is a pixel height
       } else {
         ofr.setFontSize(text_size);
@@ -1075,7 +1081,7 @@ void dtb_draw_string(const char* str, int32_t draw_x, int32_t draw_y, uint32_t d
     }
 
     // adjust position of the string
-    draw_y = draw_y + (ofr.getFontSize() * dtb_fonts[dtb_font - 1].y_offset);
+    draw_y = draw_y + height_offset + (ofr.getFontSize() * dtb_fonts[dtb_font - 1].y_offset);
 
     // draw the string
     ofr.drawString(str, draw_x, draw_y, text_color, ofr.getBackgroundColor(), ofr.getLayout());
@@ -1737,36 +1743,36 @@ void display_beacon_control() {
 
 // display the splash screen seen when the program starts
 void display_splash() {
-  uint16_t y = 0, c;
+  uint16_t y = 0, y_offset, c;
   uint8_t tmp_font;
   char msg[MSG_LEN_MAX];
 
   // location the Y position to begin drawing to center vertically the text
-  //tft.setTextSize(1);
-  dtb_set_font_size(1, tft.getViewportWidth(), nullptr);
-  //y = (tft.height() - (tft.fontHeight() * ((SPLASH_TEXT_SIZE * 6) + 1))) / 2;
-  y = (tft.height() - (dtb_get_font_height() * ((SPLASH_TEXT_SIZE * 6) + 1))) / 2;
+  tft.setTextSize(1);
+  //dtb_set_font_size(1, tft.getViewportWidth(), nullptr);
+  y = (tft.height() - (tft.fontHeight() * ((SPLASH_TEXT_SIZE * 6) + 1))) / 2;
+  //y = (tft.height() - (dtb_get_font_height() * ((SPLASH_TEXT_SIZE * 6) + 1))) / 2;
   tft.setCursor(0, y);
 
-  Serial.print("dtb_get_font_height(): ");
-  Serial.println(dtb_get_font_height());
+  //Serial.print("dtb_get_font_height(): ");
+  //Serial.println(dtb_get_font_height());
 
   // TEXT_FIT_WIDTH_MODIFIER
 
   // title
   dtb_draw_string(msg_title, tft.width()/2, y, tft.width(), SPLASH_TEXT_SIZE + 1, SPLASH_TITLE_COLOR, TC_DATUM);
-  //y += tft.fontHeight();
-  y += dtb_get_font_height();
+  y += tft.fontHeight();
+  //y += dtb_get_font_height();
 
   // contact
   dtb_draw_string(msg_email, tft.width()/2, y, tft.width() * 0.8, SPLASH_TEXT_SIZE, SPLASH_SUBTITLE_COLOR, TC_DATUM);
-  //y += (tft.fontHeight() * 2);
-  y += (dtb_get_font_height() * 2);
+  y += (tft.fontHeight() * 2);
+  //y += (dtb_get_font_height() * 2);
 
   // press any button...
   dtb_draw_string(msg_continue1, tft.width()/2, y, tft.width() * 0.8, SPLASH_TEXT_SIZE, SPLASH_TEXT_COLOR, TC_DATUM);
-  //y += tft.fontHeight();
-  y += dtb_get_font_height();
+  y += tft.fontHeight();
+  //y += dtb_get_font_height();
   dtb_draw_string(msg_continue2, tft.width()/2, y, tft.width() * 0.6, SPLASH_TEXT_SIZE, SPLASH_TEXT_COLOR, TC_DATUM);
 
   #ifdef USE_OFR_FONTS
@@ -2411,7 +2417,7 @@ void button1(button_press_t press_type) {
       break;
 
     case BEACON_LOCATION_LIST:
-      set_location_beacon(1[selected_item].id);
+      set_location_beacon(locations[selected_item].id);
       state = BEACON_ACTIVATE;
       tft_update = true;
       break;
