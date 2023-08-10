@@ -257,8 +257,7 @@
 
 #define SLEEP_AFTER                         5 * 60 * 1000 // how many milliseconds of inactivity before going to sleep/hibernation
 
-#define TEXT_FIT_WIDTH_MODIFIER             0.9           // the value of available width for text is multiplied by this value to determine a new available width
-                                                          // typically used when rendering lists to provide a kind of gutterspace
+#define DEFAULT_TEXT_FIT_WIDTH              (tft.getViewportWidth() * 0.8)
 
 // static strings used throughout DroidToolbox
 const char ble_adv_name[]               = "DROIDTLBX";              // this is the name the toolbox's beacon will appear as, keep to 10 characters or less
@@ -892,7 +891,7 @@ void list_calculate_dynamic_font_properties() {
           // calculate the font size that would be needed to fit within the dimensions of the viewport width and tft.fontHeight()
           //
           // would caluclateBoundingBox() be a better method?
-          ofs_tmp = ofr.calculateFitFontSize(tft.getViewportWidth() * TEXT_FIT_WIDTH_MODIFIER, tft.fontHeight(), ofr.getLayout(), lists[curr_list].items[curr_item]);
+          ofs_tmp = ofr.calculateFitFontSize(DEFAULT_TEXT_FIT_WIDTH, tft.fontHeight(), ofr.getLayout(), lists[curr_list].items[curr_item]);
 
           // if this value is smaller than what is currently stored, record the font size
           if (lists[curr_list].render_options.ofr_font_size < 1 || ofs_tmp < lists[curr_list].render_options.ofr_font_size) {
@@ -1069,10 +1068,18 @@ void dtb_draw_string(const char* str, int32_t draw_x, int32_t draw_y, uint32_t d
       if (text_size < 8) {
         ofr.setFontSize(ofr.calculateFitFontSize(draw_width, tft.fontHeight(), ofr.getLayout(), str));
 
+        // so this is dumb. some TTF fonts don't behave as expected with ofr.calculateFitFontSize() and the 
+        // calculated font size is TOO BIG. this is a check to resolve those situations and, as a backup, set
+        // the font size to tft.fontHeight(); -- it's a rough workaround, that's what i get for trying to use
+        // dynamic font sizes. 
+        if (dtb_get_font_height() > tft.fontHeight()) {
+            ofr.setFontSize(tft.fontHeight());
+        }
+
         // we're sizing based on the GLCD font size. our new font height will likely be smaller than the
         // GLCD font height, so we add a small offset as half the difference between the two font heights
         // to vertically center this text within the area where the GLCD font would have been
-        height_offset = (tft.fontHeight() - ofr.getTextHeight("Hg")) / 2;
+        height_offset = (tft.fontHeight() - dtb_get_font_height()) / 2;
 
       // else assume text_size is a pixel height
       } else {
@@ -1081,7 +1088,7 @@ void dtb_draw_string(const char* str, int32_t draw_x, int32_t draw_y, uint32_t d
     }
 
     // adjust position of the string
-    draw_y = draw_y + height_offset + (ofr.getFontSize() * dtb_fonts[dtb_font - 1].y_offset);
+    draw_y = draw_y + height_offset + (dtb_get_font_height() * dtb_fonts[dtb_font - 1].y_offset);
 
     // draw the string
     ofr.drawString(str, draw_x, draw_y, text_color, ofr.getBackgroundColor(), ofr.getLayout());
@@ -1637,7 +1644,7 @@ void display_captioned_menu(const char* caption, uint8_t list_index) {
   uint8_t h;
 
   // draw menu caption
-  dtb_draw_string(caption, tft.width()/2, MENU_SELECT_TEXT_PADDING, tft.width() * TEXT_FIT_WIDTH_MODIFIER, MENU_SELECT_CAPTION_TEXT_SIZE, MENU_SELECT_CAPTION_TEXT_COLOR, TC_DATUM);
+  dtb_draw_string(caption, tft.width()/2, MENU_SELECT_TEXT_PADDING, DEFAULT_TEXT_FIT_WIDTH, MENU_SELECT_CAPTION_TEXT_SIZE, MENU_SELECT_CAPTION_TEXT_COLOR, TC_DATUM);
 
   // calculate viewport dimensions for subsequent menu
   h = tft.fontHeight() + (MENU_SELECT_TEXT_PADDING * 2);
@@ -1651,7 +1658,7 @@ void display_beacon_menu(const char* caption, uint8_t list_index) {
   uint8_t h;
 
   // draw menu caption
-  dtb_draw_string(caption, tft.width()/2, MENU_SELECT_TEXT_PADDING, tft.width() * TEXT_FIT_WIDTH_MODIFIER, BEACON_SELECT_CAPTION_TEXT_SIZE, BEACON_SELECT_CAPTION_TEXT_COLOR, TC_DATUM);
+  dtb_draw_string(caption, tft.width()/2, MENU_SELECT_TEXT_PADDING, DEFAULT_TEXT_FIT_WIDTH, BEACON_SELECT_CAPTION_TEXT_SIZE, BEACON_SELECT_CAPTION_TEXT_COLOR, TC_DATUM);
 
   // calculate viewport dimensions for subsequent menu
   h = tft.fontHeight() + (BEACON_SELECT_TEXT_PADDING * 2);
@@ -1691,25 +1698,18 @@ void display_beacon_control() {
   SERIAL_PRINTLN(y);
   SERIAL_PRINTLN();
 
-  // begin rendering the screen
-  tft.setTextDatum(TC_DATUM);
-  
   // display beacon type
-  tft.setTextSize(BEACON_CONTROL_TYPE_TEXT_SIZE);
-  tft.setTextColor(BEACON_CONTROL_TYPE_COLOR);
   if (beacon.type == DROID) {
     snprintf(msg, MSG_LEN_MAX, "%s %s", msg_droid, msg_beacon);
   } else {
     snprintf(msg, MSG_LEN_MAX, "%s %s", msg_location, msg_beacon);
   }
-  tft.drawString(msg, tft.getViewportWidth()/2, y);
+  dtb_draw_string(msg, tft.getViewportWidth()/2, y, DEFAULT_TEXT_FIT_WIDTH, BEACON_CONTROL_TYPE_TEXT_SIZE, BEACON_CONTROL_TYPE_COLOR, TC_DATUM);
 
   // adjust position for next line
   y += tft.fontHeight() + BEACON_CONTROL_TEXT_PADDING;
 
   // display beacon id
-  tft.setTextSize(BEACON_CONTROL_TEXT_SIZE);
-  tft.setTextColor(BEACON_CONTROL_ID_COLOR);
   if (beacon.type == DROID) {
     p = get_droid_personality(beacon.setting[BEACON_PARAM_DROID_ID]);
     if (p != nullptr) {
@@ -1725,19 +1725,16 @@ void display_beacon_control() {
       snprintf(msg, MSG_LEN_MAX, msg_unknown_int, beacon.setting[BEACON_PARAM_LCTN_ID]);
     }
   }
-  tft.drawString(msg, tft.getViewportWidth()/2, y);
+  dtb_draw_string(msg, tft.getViewportWidth()/2, y, DEFAULT_TEXT_FIT_WIDTH, BEACON_CONTROL_TEXT_SIZE, BEACON_CONTROL_ID_COLOR, TC_DATUM);
 
   // adjust position for next line
   y += tft.fontHeight() + (BEACON_CONTROL_TEXT_PADDING * 2) + gap;
 
   // display beacon state
-  tft.setTextSize(BEACON_CONTROL_TEXT_SIZE);
   if (state == BEACON_ACTIVE) {
-    tft.setTextColor(BEACON_CONTROL_ACTIVE_COLOR);
-    tft.drawString(msg_beacon_active, tft.getViewportWidth()/2, y);
+    dtb_draw_string(msg_beacon_active,   tft.getViewportWidth()/2, y, DEFAULT_TEXT_FIT_WIDTH, BEACON_CONTROL_TEXT_SIZE, BEACON_CONTROL_ACTIVE_COLOR,   TC_DATUM);
   } else {
-    tft.setTextColor(BEACON_CONTROL_INACTIVE_COLOR);
-    tft.drawString(msg_activate_beacon, tft.getViewportWidth()/2, y);
+    dtb_draw_string(msg_activate_beacon, tft.getViewportWidth()/2, y, DEFAULT_TEXT_FIT_WIDTH, BEACON_CONTROL_TEXT_SIZE, BEACON_CONTROL_INACTIVE_COLOR, TC_DATUM);
   }
 }
 
@@ -1749,31 +1746,24 @@ void display_splash() {
 
   // location the Y position to begin drawing to center vertically the text
   tft.setTextSize(1);
-  //dtb_set_font_size(1, tft.getViewportWidth(), nullptr);
   y = (tft.height() - (tft.fontHeight() * ((SPLASH_TEXT_SIZE * 6) + 1))) / 2;
-  //y = (tft.height() - (dtb_get_font_height() * ((SPLASH_TEXT_SIZE * 6) + 1))) / 2;
   tft.setCursor(0, y);
 
-  //Serial.print("dtb_get_font_height(): ");
-  //Serial.println(dtb_get_font_height());
-
-  // TEXT_FIT_WIDTH_MODIFIER
-
   // title
-  dtb_draw_string(msg_title, tft.width()/2, y, tft.width(), SPLASH_TEXT_SIZE + 1, SPLASH_TITLE_COLOR, TC_DATUM);
+  dtb_draw_string(msg_title, tft.getViewportWidth()/2, y, tft.getViewportWidth(), SPLASH_TEXT_SIZE + 1, SPLASH_TITLE_COLOR, TC_DATUM);
   y += tft.fontHeight();
-  //y += dtb_get_font_height();
 
   // contact
-  dtb_draw_string(msg_email, tft.width()/2, y, tft.width() * 0.8, SPLASH_TEXT_SIZE, SPLASH_SUBTITLE_COLOR, TC_DATUM);
+  dtb_draw_string(msg_email, tft.getViewportWidth()/2, y, DEFAULT_TEXT_FIT_WIDTH, SPLASH_TEXT_SIZE, SPLASH_SUBTITLE_COLOR, TC_DATUM);
   y += (tft.fontHeight() * 2);
-  //y += (dtb_get_font_height() * 2);
 
   // press any button...
-  dtb_draw_string(msg_continue1, tft.width()/2, y, tft.width() * 0.8, SPLASH_TEXT_SIZE, SPLASH_TEXT_COLOR, TC_DATUM);
+  dtb_draw_string(msg_continue1, tft.getViewportWidth()/2, y, DEFAULT_TEXT_FIT_WIDTH, SPLASH_TEXT_SIZE, SPLASH_TEXT_COLOR, TC_DATUM);
   y += tft.fontHeight();
-  //y += dtb_get_font_height();
-  dtb_draw_string(msg_continue2, tft.width()/2, y, tft.width() * 0.6, SPLASH_TEXT_SIZE, SPLASH_TEXT_COLOR, TC_DATUM);
+
+  // passing a text size of 0, causing dtb_draw_string() to use whatever the current font size is; this way both lines of 'press any button...' will
+  // be the same size.
+  dtb_draw_string(msg_continue2, tft.getViewportWidth()/2, y, DEFAULT_TEXT_FIT_WIDTH, 0, SPLASH_TEXT_COLOR, TC_DATUM);
 
   #ifdef USE_OFR_FONTS
     // backup dtb_font
@@ -1785,7 +1775,7 @@ void display_splash() {
   #endif
 
   // version
-  dtb_draw_string(msg_version, tft.width(), tft.height(), tft.width()/2, SPLASH_TEXT_SIZE, SPLASH_VERSION_COLOR, BR_DATUM);
+  dtb_draw_string(msg_version, tft.getViewportWidth(), tft.getViewportHeight(), tft.getViewportWidth()/2, SPLASH_TEXT_SIZE, SPLASH_VERSION_COLOR, BR_DATUM);
 
   // battery voltage
   y = (analogRead(BAT_ADC_PIN) * 2 * 3.3 * 1000) / 4096;
@@ -1800,7 +1790,7 @@ void display_splash() {
     c = SPLASH_VERSION_COLOR; // you're probably on USB
   }
   snprintf(msg, MSG_LEN_MAX, "%s:%.2fV", (y<4400 ? "BAT" : "PWR"), (y / (float)1000));
-  dtb_draw_string(msg, 0, tft.height(), tft.width()/2, SPLASH_TEXT_SIZE, c, BL_DATUM);
+  dtb_draw_string(msg, 0, tft.getViewportHeight(), tft.getViewportWidth()/2, SPLASH_TEXT_SIZE, c, BL_DATUM);
 
   #ifdef USE_OFR_FONTS
     // restore dtb_font
@@ -1817,15 +1807,7 @@ void display_scanner_results() {
   personality_t* p = nullptr;
 
   // display header
-  tft.setTextSize(DROID_REPORT_TEXT_SIZE);
-  tft.setTextColor(DROID_REPORT_COLOR);
-  tft.setTextDatum(TC_DATUM);
-  //tft.drawString(msg_droid_report, tft.width()/2, 0);
-
-  dtb_draw_string(msg_droid_report, 
-    tft.width()/2, 0, tft.width() * TEXT_FIT_WIDTH_MODIFIER, DROID_REPORT_TEXT_SIZE, DROID_REPORT_COLOR, TC_DATUM
-  );
-
+  dtb_draw_string(msg_droid_report, tft.getViewportWidth()/2, 0, DEFAULT_TEXT_FIT_WIDTH, DROID_REPORT_TEXT_SIZE, DROID_REPORT_COLOR, TC_DATUM);
 
   // add a gap after the header
   if (droid_count > 0) {
@@ -1833,10 +1815,6 @@ void display_scanner_results() {
     // find where to start printing droid details so that it is vertically centered
     tft.setTextSize(1);
     y = (tft.height() - ((tft.fontHeight() * (DROID_REPORT_TEXT_SIZE + 1)) + (tft.fontHeight() * DROID_REPORT_TEXT_SIZE * 3)))/2;
-
-    // print droid personality
-    tft.setTextSize(DROID_REPORT_TEXT_SIZE + 1);
-    tft.setTextColor(DROID_REPORT_PERSONALITY_COLOR);
 
     // look for a known ble address first; this takes precedence over anything else
     for (i=0; i<NAMED_DROID_SIZE; i++) {
@@ -1860,48 +1838,40 @@ void display_scanner_results() {
 
     // print personality name
     if (name != nullptr) {
-      tft.drawString(name, tft.width()/2, y);
+      dtb_draw_string(name, tft.getViewportWidth()/2, y, DEFAULT_TEXT_FIT_WIDTH, DROID_REPORT_TEXT_SIZE + 1, DROID_REPORT_PERSONALITY_COLOR, TC_DATUM);
     } else {
       snprintf(msg, MSG_LEN_MAX, msg_unknown_int, droids[current_droid].chipid);
-      tft.drawString(msg, tft.width()/2, y);
+      dtb_draw_string(msg, tft.getViewportWidth()/2, y, DEFAULT_TEXT_FIT_WIDTH, DROID_REPORT_TEXT_SIZE + 1, DROID_REPORT_PERSONALITY_COLOR, TC_DATUM);
     }
 
     // print droid affiliation
     y += tft.fontHeight();
-    tft.setTextColor(DROID_REPORT_AFFILIATION_COLOR);
-    tft.setTextSize(DROID_REPORT_TEXT_SIZE);
-
-    // stock affiliation
     a = get_droid_affiliation(droids[current_droid].affid);
     if (a != nullptr) {
-      tft.drawString(a->name, tft.width()/2, y);
+      dtb_draw_string(a->name, tft.getViewportWidth()/2, y, DEFAULT_TEXT_FIT_WIDTH, DROID_REPORT_TEXT_SIZE, DROID_REPORT_AFFILIATION_COLOR, TC_DATUM);
     } else {
       snprintf(msg, MSG_LEN_MAX, msg_unknown_int, droids[current_droid].affid);
-      tft.drawString(msg, tft.width()/2, y);
+      dtb_draw_string(msg, tft.getViewportWidth()/2, y, DEFAULT_TEXT_FIT_WIDTH, DROID_REPORT_TEXT_SIZE, DROID_REPORT_AFFILIATION_COLOR, TC_DATUM);
     }
 
     // print Bluetooth MAC address
     y += tft.fontHeight();
-    tft.setTextColor(DROID_REPORT_ADDRESS_COLOR);
-    tft.drawString(droids[current_droid].pAdvertisedDevice->getAddress().toString().c_str(), tft.width()/2, y);
+    dtb_draw_string(droids[current_droid].pAdvertisedDevice->getAddress().toString().c_str(), tft.getViewportWidth()/2, y, DEFAULT_TEXT_FIT_WIDTH, DROID_REPORT_TEXT_SIZE, DROID_REPORT_ADDRESS_COLOR, TC_DATUM);
 
     // print RSSI
     y += tft.fontHeight();
-    tft.setTextColor(DROID_REPORT_RSSI_COLOR);
     snprintf(msg, MSG_LEN_MAX, msg_rssi, droids[current_droid].pAdvertisedDevice->getRSSI());
-    tft.drawString(msg, tft.width()/2, y);
+    dtb_draw_string(msg, tft.getViewportWidth()/2, y, DEFAULT_TEXT_FIT_WIDTH, DROID_REPORT_TEXT_SIZE, DROID_REPORT_RSSI_COLOR, TC_DATUM);
 
     // print
-    tft.setTextDatum(BC_DATUM);
-    tft.setTextColor(DROID_REPORT_COLOR);
     snprintf(msg, MSG_LEN_MAX, msg_d_of_d, current_droid + 1, droid_count);
-    tft.drawString(msg, tft.width()/2, tft.height());
+    dtb_draw_string(msg, tft.getViewportWidth()/2, tft.getViewportHeight(), DEFAULT_TEXT_FIT_WIDTH, DROID_REPORT_TEXT_SIZE, DROID_REPORT_COLOR, BC_DATUM);
 
   // display message that no droids were found
   } else {
 
     // set the font size
-    dtb_set_font_size(DROID_REPORT_TEXT_SIZE + 1, tft.width() * TEXT_FIT_WIDTH_MODIFIER, msg_no_droids1);
+    dtb_set_font_size(DROID_REPORT_TEXT_SIZE + 1, DEFAULT_TEXT_FIT_WIDTH, msg_no_droids1);
 
     // calculate where to start rendering the message
     y = (tft.height()/2) - dtb_get_font_height();
@@ -2242,14 +2212,14 @@ void update_display() {
       break;
 
     case SCANNER_CONNECTED:      // display_connected()
-      dtb_set_font_size(ACTION_TEXT_SIZE, tft.width() * TEXT_FIT_WIDTH_MODIFIER, msg_scanner_connected);
+      dtb_set_font_size(ACTION_TEXT_SIZE, DEFAULT_TEXT_FIT_WIDTH, msg_scanner_connected);
       dtb_draw_string(msg_scanner_connected, 
         tft.getViewportWidth()/2, (tft.getViewportHeight()/2) - (dtb_get_font_height()/2), 0, 0, ACTION_RESULT_OK_TEXT_COLOR, TC_DATUM
       );
       break;
 
     case SCANNER_CONNECT_FAILED: // display_connect_failed()
-      dtb_set_font_size(ACTION_TEXT_SIZE, tft.width() * TEXT_FIT_WIDTH_MODIFIER, msg_scanner_connected);
+      dtb_set_font_size(ACTION_TEXT_SIZE, DEFAULT_TEXT_FIT_WIDTH, msg_scanner_connected);
       dtb_draw_string(msg_connect, 
         tft.getViewportWidth()/2, (tft.getViewportHeight()/2) - dtb_get_font_height(), 0, 0, ACTION_RESULT_NG_TEXT_COLOR, TC_DATUM
       );
@@ -2261,7 +2231,7 @@ void update_display() {
     case SCANNER_CONNECTING:     // display_connecting()
 
       // display message at top of screen to turn off the droid's remote
-      dtb_set_font_size(DEFAULT_TEXT_SIZE, tft.width() * TEXT_FIT_WIDTH_MODIFIER, msg_turn_off_remote1);
+      dtb_set_font_size(DEFAULT_TEXT_SIZE, DEFAULT_TEXT_FIT_WIDTH, msg_turn_off_remote1);
       dtb_draw_string(msg_turn_off_remote1, 
         tft.width()/2, 0, 0, 0, DEFAULT_TEXT_COLOR, TC_DATUM
       );
@@ -2270,7 +2240,7 @@ void update_display() {
       );
 
       // display CONNECTING message
-      dtb_set_font_size(ACTION_TEXT_SIZE, tft.width() * TEXT_FIT_WIDTH_MODIFIER, msg_scanner_connecting);
+      dtb_set_font_size(ACTION_TEXT_SIZE, DEFAULT_TEXT_FIT_WIDTH, msg_scanner_connecting);
       dtb_draw_string(msg_scanner_connecting, 
         tft.getViewportWidth()/2, (tft.getViewportHeight()/2) - (dtb_get_font_height()/2), 0, 0, ACTION_TEXT_COLOR, TC_DATUM
       );
@@ -2283,7 +2253,7 @@ void update_display() {
     case SCANNER_SCANNING:       // display_scanning()
 
       // for wahtever reason, using TC_DATUM instead of MC_DATUM renders more vertically-centered
-      dtb_set_font_size(ACTION_TEXT_SIZE, tft.width() * TEXT_FIT_WIDTH_MODIFIER, msg_scanner_active);
+      dtb_set_font_size(ACTION_TEXT_SIZE, DEFAULT_TEXT_FIT_WIDTH, msg_scanner_active);
       dtb_draw_string(msg_scanner_active, 
         tft.getViewportWidth()/2, (tft.getViewportHeight()/2) - (dtb_get_font_height()/2), 0, 0, ACTION_TEXT_COLOR, TC_DATUM
       );
