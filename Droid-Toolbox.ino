@@ -102,6 +102,7 @@
  *   consider a method for setting font sizes based on screen size
  *   is there any value in scanning for SWGE East/West beacon (used by the Disney Play app) and identifying which location you're in based off that?
  *   ability save beacons that are defined in EXPERT mode?
+ *   store currently selected font in non-volatile memory and retrieve on boot
  *
  * HISTORY
  *   v0.65 : added support for custom fonts via OpenFontRenderer (https://github.com/takkaO/OpenFontRender)
@@ -182,7 +183,7 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.65"                 // the version displayed on the splash screen at the lower right
+#define MSG_VERSION                         "v0.65pre"              // the version displayed on the splash screen at the lower right
 
 #define DEFAULT_TEXT_SIZE                   2                       // a generic size used throughout 
 #define DEFAULT_TEXT_COLOR                  TFT_DARKGREY            // e.g. 'turn off your droid remote'
@@ -831,6 +832,34 @@ void list_init() {
   lists[LIST_PERSONALITIES].render_options.row_width              = 0;
 }
 
+// calculate the current font height
+uint16_t dtb_get_font_height() {
+  static const char test_str[] = "Hy";
+  #ifdef USE_OFR_FONTS
+    if (dtb_font != 0) {
+      return((uint16_t)(ofr.getTextHeight(test_str) & 0x0000FFFF));
+    } else {
+  #endif
+      return((uint16_t)(tft.fontHeight() & 0x7FFF));
+  #ifdef USE_OFR_FONTS
+    }
+  #endif
+}
+
+// calculate the current font height
+uint16_t dtb_get_text_width(const char* msg) {
+  static const char test_str[] = "Hy";
+  #ifdef USE_OFR_FONTS
+    if (dtb_font != 0) {
+      return((uint16_t)(ofr.getTextWidth(msg) & 0x0000FFFF));
+    } else {
+  #endif
+      return((uint16_t)(tft.textWidth(msg) & 0x0000FFFF));
+  #ifdef USE_OFR_FONTS
+    }
+  #endif
+}
+
 // this function is precalculating ofr_font_size and row_width for all lists
 // it should be called only one time, after the system font is set/changed.
 // this front-loads all the processor-intensive calculations required to determine the
@@ -952,21 +981,6 @@ void dtb_set_font_size(uint8_t text_size, uint16_t width_fit, const char* str) {
   #endif
 }
 
-// calculate the current font height
-uint16_t dtb_get_font_height() {
-  static const char test_str[] = "Hy";
-  #ifdef USE_OFR_FONTS
-    if (dtb_font != 0) {
-      return((uint16_t)(ofr.getTextHeight(test_str) & 0x0000FFFF));
-      //return((uint16_t)(ofr.getFontSize() & 0x0000FFFF));
-    } else {
-  #endif
-      return((uint16_t)(tft.fontHeight() & 0x7FFF));
-  #ifdef USE_OFR_FONTS
-    }
-  #endif
-}
-
 // set alignment of ofr using the tft datum values
 void set_ofr_alignment_by_datum(uint8_t d) {
   #ifdef USE_OFR_FONTS
@@ -1058,10 +1072,10 @@ void dtb_draw_string(const char* str, int32_t draw_x, int32_t draw_y, uint32_t d
   // else we're using a TTF font
   } else {
 
-    if (text_size != 0) {
+    // set text alignment
+    set_ofr_alignment_by_datum(text_datum);
 
-      // set text alignment
-      set_ofr_alignment_by_datum(text_datum);
+    if (text_size != 0) {
 
       // if text_size is less than 8 it's a GLCD font size
       // calculate and set the actual font size based on tft.fontHeight()
@@ -1890,27 +1904,29 @@ void display_scanner_results() {
 }
 
 void display_sounds() {
+  const char tst_msg[] = "88";
   char msg[MSG_LEN_MAX];
-  uint16_t x, y;
+  uint16_t x, y, w;
 
   // line1: group
   // line2: track
   // line3: gap
   // line4: play
 
-  // display instruction
-  tft.setTextSize(SOUNDS_TEXT_SIZE);
+  // figure out a font size to use
+  dtb_set_font_size(SOUNDS_TEXT_SIZE, DEFAULT_TEXT_FIT_WIDTH/2, msg_group);
 
   // let's figure out how to center all this 
   snprintf(msg, MSG_LEN_MAX, "%s: ", msg_group);
-  x = tft.textWidth(msg);
+  x = dtb_get_text_width(msg);
   snprintf(msg, MSG_LEN_MAX, "%s: ", msg_track);
-  if (tft.textWidth(msg) > x) {
-    x = tft.textWidth(msg);
+  y = dtb_get_text_width(msg);
+  if (y > x) {
+    x = y;
   }
 
   // the vertical split is located
-  x = ((tft.getViewportWidth() - (x + tft.textWidth("88")))/2) + x;
+  x = ((tft.getViewportWidth() - (x + dtb_get_text_width(tst_msg) + 10))/2) + x;
 
   // find the starting point to draw text
   y = (tft.fontHeight() * 4) + SOUNDS_TEXT_PADDING;
@@ -1918,44 +1934,34 @@ void display_sounds() {
 
   // display group label
   snprintf(msg, MSG_LEN_MAX, "%s: ", msg_group);
-  tft.setTextDatum(TR_DATUM);
-  tft.setTextColor(SOUNDS_GROUP_COLOR);
-  tft.drawString(msg, x, y);
+  dtb_draw_string(msg, x, y, 0, 0, SOUNDS_GROUP_COLOR, TR_DATUM);
 
   // display group value
   snprintf(msg, MSG_LEN_MAX, "%d", (current_group + 1));
-  tft.setTextDatum(TL_DATUM);
-  tft.setTextColor((state == SOUND_GROUP) ? SOUNDS_VALUE_SELECTED_COLOR : SOUNDS_VALUE_COLOR);
-  tft.drawString(msg, x, y);
+  dtb_draw_string(msg, x+10, y, 0, 0, (state == SOUND_GROUP ? SOUNDS_VALUE_SELECTED_COLOR : SOUNDS_VALUE_COLOR), TL_DATUM);
 
   // move next line
   y += tft.fontHeight() + SOUNDS_TEXT_PADDING;
 
   // display track label
   snprintf(msg, MSG_LEN_MAX, "%s: ", msg_track);
-  tft.setTextDatum(TR_DATUM);
-  tft.setTextColor(SOUNDS_TRACK_COLOR);
-  tft.drawString(msg, x, y);
+  dtb_draw_string(msg, x, y, 0, 0, SOUNDS_TRACK_COLOR, TR_DATUM);
 
   // display track value
   snprintf(msg, MSG_LEN_MAX, "%d", (current_track + 1));
-  tft.setTextDatum(TL_DATUM);
-  tft.setTextColor((state == SOUND_TRACK) ? SOUNDS_VALUE_SELECTED_COLOR : SOUNDS_VALUE_COLOR);
-  tft.drawString(msg, x, y); 
+  dtb_draw_string(msg, x+10, y, 0, 0, (state == SOUND_TRACK ? SOUNDS_VALUE_SELECTED_COLOR : SOUNDS_VALUE_COLOR), TL_DATUM);
 
   // move down to draw play button
   y += (tft.fontHeight() * 2);
 
   // display play button
-  tft.setTextDatum(TC_DATUM);
-  tft.setTextColor((state == SOUND_PLAY) ? SOUNDS_VALUE_SELECTED_COLOR : SOUNDS_VALUE_COLOR);
-  tft.drawString(msg_play, tft.getViewportWidth()/2, y);
+  dtb_draw_string(msg_play, tft.getViewportWidth()/2, y, 0, 0, (state == SOUND_PLAY ? SOUNDS_VALUE_SELECTED_COLOR : SOUNDS_VALUE_COLOR), TC_DATUM);
 }
 
 void display_volume() {
   char msg[MSG_LEN_MAX];
   uint16_t content_height;
-  uint16_t x, y;
+  uint16_t x, y, text_color;
 
   // line1: volume
   // line2: gap
@@ -1969,20 +1975,18 @@ void display_volume() {
 
   // set volume color based on its value
   if (droid_volume < 50) {
-    tft.setTextColor(VOLUME_LOW_COLOR);
+    text_color = VOLUME_LOW_COLOR;
   } else if (droid_volume < 80) {
-    tft.setTextColor(VOLUME_MED_COLOR);
+    text_color = VOLUME_MED_COLOR;
   } else if (droid_volume < 100) {
-    tft.setTextColor(VOLUME_HIGH_COLOR);
+    text_color = VOLUME_HIGH_COLOR;
   } else {
-    tft.setTextColor(VOLUME_MAX_COLOR);
+    text_color = VOLUME_MAX_COLOR;
   }
 
   // display volume
   snprintf(msg, MSG_LEN_MAX, "%d", droid_volume);
-  tft.setTextDatum(TC_DATUM);
-  tft.setTextSize(VOLUME_TEXT_SIZE + 2);
-  tft.drawString(msg, tft.getViewportWidth()/2, y);
+  dtb_draw_string(msg, tft.getViewportWidth()/2, y, DEFAULT_TEXT_FIT_WIDTH, VOLUME_TEXT_SIZE + 2, text_color, TC_DATUM);
 
   // next line
   y += tft.fontHeight();
@@ -1991,23 +1995,34 @@ void display_volume() {
   tft.setTextSize(VOLUME_TEXT_SIZE);
   y += tft.fontHeight();
 
+  // why am i setting size with this instead of setting it in dtb_draw_string()?
+  // because i'm dumb.
+  // and dtb_draw_string calculates height_offset only if font size and render width are passed to dtb_set_font_size
+  // so either i set font size here and ignore height_offset
+  // or i pass width and size to all of these functions
+  //
+  // i should probably revisit dtb_draw_string and see if this goofball limitation/issue is relevant.. 
+  // it only exists to operate under the assumption that an ofr fontsize can be passed, which I don't think i'm doing.
+  //
+  // oh, and hi, if you're reading comments. i apologize for the code. it's long. convoluted. and probably overly complicated
+  // but this is how i code; i make it work, then i figure out if it can be done better. then i figure out if it can be done cleaner.
+  // i haven't gotten to the better and cleaner parts, yet.
+  dtb_set_font_size(VOLUME_TEXT_SIZE, DEFAULT_TEXT_FIT_WIDTH/2.5, msg_vol_inc);
+
   // vol+
-  tft.setTextColor((state == VOLUME_UP ? VOLUME_SELECTED_TEXT_COLOR : VOLUME_TEXT_COLOR));
-  tft.setTextDatum(TR_DATUM);
-  tft.drawString(msg_vol_inc, (tft.getViewportWidth()/2) - VOLUME_TEXT_PADDING, y);
+  text_color = (state == VOLUME_UP ? VOLUME_SELECTED_TEXT_COLOR : VOLUME_TEXT_COLOR);
+  dtb_draw_string(msg_vol_inc, (tft.getViewportWidth()/2) - VOLUME_TEXT_PADDING, y, 0, 0, text_color, TR_DATUM);
 
   // vol-
-  tft.setTextColor((state == VOLUME_DOWN ? VOLUME_SELECTED_TEXT_COLOR : VOLUME_TEXT_COLOR));
-  tft.setTextDatum(TL_DATUM);
-  tft.drawString(msg_vol_dec, (tft.getViewportWidth()/2) + VOLUME_TEXT_PADDING, y);
+  text_color = (state == VOLUME_DOWN ? VOLUME_SELECTED_TEXT_COLOR : VOLUME_TEXT_COLOR);
+  dtb_draw_string(msg_vol_dec, (tft.getViewportWidth()/2) + VOLUME_TEXT_PADDING, y, 0, 0, text_color, TL_DATUM);
 
   // next line
   y += (tft.fontHeight() + VOLUME_TEXT_PADDING);
 
   // set volume
-  tft.setTextColor((state == VOLUME_TEST ? VOLUME_SELECTED_TEXT_COLOR : VOLUME_TEXT_COLOR));
-  tft.setTextDatum(TC_DATUM);
-  tft.drawString(msg_set_vol, tft.getViewportWidth()/2, y);
+  text_color = (state == VOLUME_TEST ? VOLUME_SELECTED_TEXT_COLOR : VOLUME_TEXT_COLOR);
+  dtb_draw_string(msg_set_vol, tft.getViewportWidth()/2, y, 0, 0, text_color, TC_DATUM);
 }
 
 void display_beacon_expert() {
@@ -2215,9 +2230,10 @@ void update_display() {
       break;
 
     case SCANNER_CONNECTED:      // display_connected()
-      dtb_set_font_size(ACTION_TEXT_SIZE, DEFAULT_TEXT_FIT_WIDTH, msg_scanner_connected);
+
+      // display connected message
       dtb_draw_string(msg_scanner_connected, 
-        tft.getViewportWidth()/2, (tft.getViewportHeight()/2) - (dtb_get_font_height()/2), 0, 0, ACTION_RESULT_OK_TEXT_COLOR, TC_DATUM
+        tft.getViewportWidth()/2, (tft.getViewportHeight()/2) - (dtb_get_font_height()/2), DEFAULT_TEXT_FIT_WIDTH, ACTION_TEXT_SIZE, ACTION_RESULT_OK_TEXT_COLOR, TC_DATUM
       );
       break;
 
@@ -2233,19 +2249,13 @@ void update_display() {
 
     case SCANNER_CONNECTING:     // display_connecting()
 
-      // display message at top of screen to turn off the droid's remote
-      dtb_set_font_size(DEFAULT_TEXT_SIZE, DEFAULT_TEXT_FIT_WIDTH, msg_turn_off_remote1);
-      dtb_draw_string(msg_turn_off_remote1, 
-        tft.width()/2, 0, 0, 0, DEFAULT_TEXT_COLOR, TC_DATUM
-      );
-      dtb_draw_string(msg_turn_off_remote2, 
-        tft.width()/2, dtb_get_font_height(), 0, 0, DEFAULT_TEXT_COLOR, TC_DATUM
-      );
+      // display message to turn off droid remote at top of screen
+      dtb_draw_string(msg_turn_off_remote1, tft.getViewportWidth()/2, 0, DEFAULT_TEXT_FIT_WIDTH, DROID_REPORT_TEXT_SIZE, DROID_REPORT_COLOR, TC_DATUM);
+      dtb_draw_string(msg_turn_off_remote2, tft.getViewportWidth()/2, tft.fontHeight(), DEFAULT_TEXT_FIT_WIDTH, 0, DROID_REPORT_COLOR, TC_DATUM);
 
       // display CONNECTING message
-      dtb_set_font_size(ACTION_TEXT_SIZE, DEFAULT_TEXT_FIT_WIDTH, msg_scanner_connecting);
       dtb_draw_string(msg_scanner_connecting, 
-        tft.getViewportWidth()/2, (tft.getViewportHeight()/2) - (dtb_get_font_height()/2), 0, 0, ACTION_TEXT_COLOR, TC_DATUM
+        tft.getViewportWidth()/2, (tft.getViewportHeight()/2) - (dtb_get_font_height()/2), DEFAULT_TEXT_FIT_WIDTH, ACTION_TEXT_SIZE, ACTION_TEXT_COLOR, TC_DATUM
       );
       break;
 
