@@ -10,62 +10,64 @@
  * 
  * Designed to be used with a LilyGO TTGO T-Display or LilyGO T-Display-S3 which are ESP32-based modules with an LCD display, although
  * it should work with any ESP32 module and some small code changes.
- *   see: https://www.amazon.com/dp/B099MPFJ9M (TTGO T-Display)
- *        https://www.amazon.com/dp/B0BF542H39 (T-Display-S3)
+ *   TTGO T-Display: https://www.lilygo.cc/products/lilygo%C2%AE-ttgo-t-display-1-14-inch-lcd-esp32-control-board
+ *   T-Display-S3: https://www.lilygo.cc/products/t-display-s3
  * 
- * Required Boards
+ * Required Arduino Board
  *  Arduino ESP32 core: https://github.com/espressif/arduino-esp32
  *    1. add https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json to the additional board manager URLs in the preferences window
  *    2. go to boards manager
  *    3. search for and install esp32
  *    4. when compiling, select either the ESP32 Dev Module (for T-Display) or ESP32S3 Dev Module (for T-Display-32)
  * 
- * Requires the TFT_eSPI Library
- *  see: https://github.com/Bodmer/TFT_eSPI
+ * Required Arduino Libraries
+ *  TFT_eSPI: https://github.com/Bodmer/TFT_eSPI
+ *  OpenFontRender: https://github.com/takkaO/OpenFontRender
  *  
- *  NOTE 1: 
- *    After installing or updating the TFT_eSPI library you MUST edit User_Setup_Select.h as follows 
- *      1. comment out the line "#include <User_Setup.h>" (line 22-ish)
- *      2. uncomment the line "#include <User_Setups/Setup25_TTGO_T_Display.h>" (line 61-ish) for T-Display
- *         or "#include <User_Setups/Setup206_LilyGo_T_Display_S3.h>" for the T-Display-32
+ * NOTE 1: 
+ *  After installing or updating the TFT_eSPI library you MUST edit User_Setup_Select.h as follows 
+ *     1. comment out the line "#include <User_Setup.h>" (line 22-ish)
+ *     2. uncomment the line "#include <User_Setups/Setup25_TTGO_T_Display.h>" (line 61-ish) for T-Display
+ *        or "#include <User_Setups/Setup206_LilyGo_T_Display_S3.h>" for the T-Display-32
  *
- *    Possible path for Windows users: %USERPROFILE%\Documents\Arduino\libraries\TFT_eSPI\User_Setup_Select.h
+ *   Possible path for Windows users: %USERPROFILE%\Documents\Arduino\libraries\TFT_eSPI\User_Setup_Select.h
  *
- *  NOTE 2:
- *    The T-Display-S3 may display the wrong colors. If this happens you'll also need to modify 
- *    User_Setups/Setup206_LilyGo_T_Display_S3.h in the TFT_eSPI library, locate the two lines, one commented out,
- *    that begin with "#define TFT_RGB_ORDER". Uncomment the commented-out line, and comment out the uncommented line.
- *    Then reupload the sketch and the colors should be correct.
+ * NOTE 2:
+ *   The T-Display-S3 may display the wrong colors. If this happens you'll also need to modify 
+ *   User_Setups/Setup206_LilyGo_T_Display_S3.h in the TFT_eSPI library, locate the two lines, one commented out,
+ *   that begin with "#define TFT_RGB_ORDER". Uncomment the commented-out line, and comment out the uncommented line.
+ *   Then reupload the sketch and the colors should be correct.
  *
- *    #define TFT_RGB_ORDER TFT_RGB
+ *   #define TFT_RGB_ORDER TFT_RGB
  *
- * A BLE library is included in the Arduino ESP32 core. If you have ArduinoBLE already installed you will need
- * to uninstall it in order for this code to compile correctly. To uninstall a library locate your arduino 
- * libraries folder and delete the ArduinoBLE folder.
+ * NOTE 3:
+ *   A BLE library is included in the Arduino ESP32 core. If you have ArduinoBLE already installed you will need
+ *   to uninstall it in order for this code to compile correctly. To uninstall a library locate your arduino 
+ *   libraries folder and delete the ArduinoBLE folder.
  *
  * TTGO T-Display Board Configuration (defaults)
- *  Board: ESP32 Dev Module
- *  Upload Speed: 921600
- *  CPU Freq: 240MHz (WiFI/BT)
- *  Flash Freq: 80MHz
- *  Flash Mode: QIO
- *  Flash Size: 4MB (32Mb)
- *  Partition Scheme: Default 4MB with spiffs
- *  Core Debug Level: None
- *  PSRAM: Disabled
+ *   Board: ESP32 Dev Module
+ *   Upload Speed: 921600
+ *   CPU Freq: 240MHz (WiFI/BT)
+ *   Flash Freq: 80MHz
+ *   Flash Mode: QIO
+ *   Flash Size: 4MB (32Mb)
+ *   Partition Scheme: Default 4MB with spiffs
+ *   Core Debug Level: None
+ *   PSRAM: Disabled
  * 
  * T-Display-S3 Board Configuration (defaults)
- *  Board: ESP32S3 Dev Module
- *  Upload Speed: 921600
- *  CPU Freq: 240MHz (WiFI/BT)
- *  Flash Mode: QIO 80MHz
- *  Flash Size: 16MB (128Mb)
- *  Partition Scheme: Huge App (3MB No OTA/1MB SPIFFS)
- *  Core Debug Level: None
- *  PSRAM: OPI PSRAM 
- *  USB CDC On Boot: Enabled
- *  JTAG Adapter: Integrated USB JTAG
- *  USB Mode: Hardware CDC and JTAG
+ *   Board: ESP32S3 Dev Module
+ *   Upload Speed: 921600
+ *   CPU Freq: 240MHz (WiFI/BT)
+ *   Flash Mode: QIO 80MHz
+ *   Flash Size: 16MB (128Mb)
+ *   Partition Scheme: Huge App (3MB No OTA/1MB SPIFFS)
+ *   Core Debug Level: None
+ *   PSRAM: OPI PSRAM 
+ *   USB CDC On Boot: Enabled
+ *   JTAG Adapter: Integrated USB JTAG
+ *   USB Mode: Hardware CDC and JTAG
  *   
  * References
  *   Arduino IDE setup: https://www.youtube.com/watch?v=b8254--ibmM
@@ -74,17 +76,12 @@
  *   
  *   Misc:
  *     https://github.com/Bodmer/TFT_eSPI/blob/master/TFT_eSPI.h
+ *     https://github.com/takkaO/OpenFontRender/blob/master/src/OpenFontRender.h
  *     https://github.com/nkolban/esp32-snippets/blob/master/cpp_utils/BLEScan.h
  *     https://programmer.ink/think/arduino-development-tft_espi-library-learning.html
  *     https://programmer.ink/think/color-setting-and-text-display-esp32-learning-tour-arduino-version.html.
  *     https://github.com/nkolban/esp32-snippets/blob/fe3d318acddf87c6918944f24e8b899d63c816dd/cpp_utils/BLEAdvertisedDevice.h
  *
- *   TFT_eSPI:
- *     https://github.com/Bodmer/TFT_eSPI/blob/master/TFT_eSPI.h
- *     https://github.com/Bodmer/TFT_eSPI/blob/master/TFT_eSPI.cpp
- *     https://github.com/Bodmer/TFT_eSPI/blob/master/examples/Generic/Viewport_Demo/Viewport_commands.ino
- *     https://github.com/Bodmer/TFT_eSPI/blob/master/examples/Generic/TFT_Button_Label_Datum/TFT_Button_Label_Datum.ino
- *   
  * TODO
  *   scanner:
  *     search for specific droid/location
@@ -95,16 +92,19 @@
  *        identify nearby zones 
  *        maybe a constant-scan mode that alerts when the rare zones appear (4, 5)
  *     ability to connect to a single droid and send 'raw' commands
- *        play specific track from specific audio group
- *        control LEDs (?)
+ *        control LEDs
  *        control motors (is this a GOOD idea? probably not...)
- *        other ??
- *   consider a method for setting font sizes based on screen size
- *   is there any value in scanning for SWGE East/West beacon (used by the Disney Play app) and identifying which location you're in based off that?
- *   ability save beacons that are defined in EXPERT mode?
- *   store currently selected font in non-volatile memory and retrieve on boot
- *   ** fix expert location beacon
- *   ** 
+ *   beacon:
+ *     create a cycle beacon type; this type will cycle through beacons every X number of minutes
+ *       a location cycle beacon that will cycle through locations
+ *       a droid cycle beacon that will cycle through droids
+ *       a random cycle beacon that will cycle through all of them
+ *   other: 
+ *     is there any value in scanning for SWGE East/West beacon (used by the Disney Play app) and identifying which location you're in based off that?
+ *     ability save beacons that are defined in EXPERT mode?
+ *     store currently selected font in non-volatile memory and retrieve on boot
+ *     revisit auto shutoff. can it not require a reset to wake up?
+ *     add option, through defines, to rotate display 180 degrees so buttons are on the right
  *
  * HISTORY
  *   v0.65 : added support for custom fonts via OpenFontRenderer (https://github.com/takkaO/OpenFontRender)
@@ -152,8 +152,8 @@
  *           Group and track can be selected and played through the droid.
  *   v0.40 : Added deep sleep/hibernation
  *           Added initial ability to connect to droid with long button 1 press while viewing droid in scan results
- *            Connection is currently a demo; connect, tell droid to play a sound, then disconnect. 
- *            Will improve upon this in the next version.
+ *             Connection is currently a demo; connect, tell droid to play a sound, then disconnect. 
+ *             Will improve upon this in the next version.
  *   v0.30 : Long/Short button press detection
  *           Droid report is paged; shows 1 droid at a time
  *           Droid report sorts droids by RSSI value
@@ -185,7 +185,7 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.65pre"              // the version displayed on the splash screen at the lower right
+#define MSG_VERSION                         "v0.65"                 // the version displayed on the splash screen at the lower right
 
 #define DEFAULT_TEXT_SIZE                   2                       // a generic size used throughout 
 #define DEFAULT_TEXT_COLOR                  TFT_DARKGREY            // e.g. 'turn off your droid remote'
@@ -405,6 +405,8 @@ typedef struct {
 // these beacons in an environment outside of Galaxy's Edge!
 //
 // NOTE: a droid does "see" a location beacon with a value of 0, however it will not react
+//       therefore I do not include it in this list, but location 0 is available in the 
+//       expert beacon mode.
 //
 location_t locations[] = {
 // ID,    NAME
