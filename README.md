@@ -1,4 +1,4 @@
-# Droid Toolbox - v0.64
+# Droid Toolbox - v0.65
 This is an [Arduino IDE](https://www.arduino.cc/en/software) sketch for ESP32-based devices to interact with [Galaxy's Edge droids](https://disneyworld.disney.go.com/shops/hollywood-studios/droid-depot/). It can emit a bluetooth beacon that droids will react to, scan for nearby droids, and connect to droids and command them to play specific audio tracks from their personality chip. A YouTube video of the Droid Toolbox in action is available at https://www.youtube.com/watch?v=0sHTIEbTevk.
 
 This code was specifically designed for [LILYGO TTGO T-Display](https://www.lilygo.cc/products/lilygo%C2%AE-ttgo-t-display-1-14-inch-lcd-esp32-control-board) and [LILYGO T-Display-S3](https://www.lilygo.cc/products/t-display-s3) devices and may not display correctly on other ESP32 devices without modification.
@@ -23,16 +23,24 @@ This code was specifically designed for [LILYGO TTGO T-Display](https://www.lily
 * [Arduino IDE Software](https://www.arduino.cc/en/software)
 * [ESP32 Core for Arduino](https://github.com/espressif/arduino-esp32)
 * [TFT_eSPI Library](https://github.com/Bodmer/TFT_eSPI)
+* [OpenFontRender](https://github.com/takkaO/OpenFontRender)
 
 ## Button Labeling / TTGO Orientation
-![Image of a TTGO with the Droid Toolbox boot screen.](images/v0.51_01_start.jpg)
+![Image of a TTGO with the Droid Toolbox splash screen. It says "Droid Toolbox. Press any key to continue."](images/v0.65_00_splash.jpg)
 * Droid toolbox is designed to be operated with the TTGO held horizontally with the USB port on facing the left.
 * The button at top-left (above the USB port) is Button 1.
 * The button at the bottom-left (below the USB port) is Button 2.
 
 ## Operation
+![Image of a TTGO with the Droid Toolbox splash screen in an Aurebesh font.](images/v0.65_01_splash_aurebesh.jpg)
+* At startup the droid toolbox displays a splash screen.
+* While at the splash screen you can change the display font used by the droid toolbox.
+* To change the font press and hold the button 1 for at least 1 second then release it.
+* The splash screen will refresh in the new font. 
+* Droid Toolbox comes with 4 variations on the Aurebesh font.
+
 ![Image of a TTGO with the menu screen showing SCANNER band BEACON options.](images/v0.54_02_top_menu.jpg)
-* Upon startup, press either button 1 or 2 to enter the main menu.
+* Press either button 1 or 2 to enter the main menu.
 * Press button 2 to change options in the main menu.
 * Press button 1 to select the highlighted option from the main menu.
 
@@ -124,7 +132,7 @@ The LilyGo T-Display-S3 is like the LilyGo TTGO T-Display, but with a larger scr
 ## About Audio Tracks
 Galaxy's Edge droids have [personality chips](https://plandisney.disney.go.com/question/dose-droid-personality-406556/). Droids come with a built-in personality chip, but can be modified by plugging in an extra personality chip which overrides the internal personality chip. The personality chip is a collection of audio clips which play when a droid reacts to location beacons, nearby droids, or button presses on the droid's remote control. The audio clips are divided into 12 separate groups. The first 7 groups represent 7 areas within Galaxy's Edge and are what plays when a droid reacts to a beacon. Group 8 through 12 contain special audio clips used with droid accessories (for R-units) and special circumstances, such as when a droid is first activated inside Droid Depot. 
 
-Droid Toolbox allows you to select between the 12 groups and select an audio track within that group. The number of audio clips for a given group can vary between personality chips. While we know how many clips there are for stock personality chips, custom personality chips could have as many audio clips as you want. As such you'll be able to select up to audio track 99, even though the number of tracks typically goesn't go beyond 6. If you try to play an audio track number that doesn't exist the droid will simply do nothing.
+Droid Toolbox allows you to select between the 12 groups and select an audio track within that group. The number of audio clips for a given group can vary between personality chips. While we know how many clips there are for stock personality chips, custom personality chips could have as many audio clips as you want. As such you'll be able to select up to audio track 99, even though the number of tracks typically doesn't go beyond 6. If you try to play an audio track number that doesn't exist the droid will simply do nothing.
 
 ### Audio Groups and Their Uses
 |Group|Purpose|
@@ -132,8 +140,8 @@ Droid Toolbox allows you to select between the 12 groups and select an audio tra
 |1|Location: Market Area|
 |2|Location: [Droid Depot](https://disneyworld.disney.go.com/shops/hollywood-studios/droid-depot/)|
 |3|Location: Resistance Area|
-|4|Location: Unkown \*|
-|5|Location: [Oga's Cantina](https://disneyworld.disney.go.com/dining/hollywood-studios/ogas-cantina/) \*\*|
+|4|Location: Unknown \*|
+|5|Location: Alert \*\*|
 |6|Location: [Dok-Ondar's Den of Antiquities](https://disneyworld.disney.go.com/shops/hollywood-studios/dok-ondars-den-of-antiquities/)|
 |7|Location: First Order Area|
 |8|Droid Activation|
@@ -144,7 +152,7 @@ Droid Toolbox allows you to select between the 12 groups and select an audio tra
 
 *\* No location beacon for this value has been seen inside Galaxy's Edge*
 
-*\*\* Only seen at the entrance to Oga's; possibly the droid detectors?*
+*\*\* Seen at the entrance to [Oga's Cantina](https://disneyworld.disney.go.com/dining/hollywood-studios/ogas-cantina/); possibly the droid detectors? Also seen near Ronto Roasters and the area between Droid Depot and First Order.*
 
 ## References
 * [Controlling Disney’s Droids from Droid Depot with WebBluetooth](https://medium.com/@baptistelaget/controlling-disneys-droids-from-droid-depots-with-webbluetooth-febbabe50587)
@@ -152,3 +160,4 @@ Droid Toolbox allows you to select between the 12 groups and select an audio tra
 * [Dead Bothans Society Beacon Map](https://docs.google.com/spreadsheets/d/1zIZb7uUxUe7ewypnTGrzrX1FA85U5mn2XtULZbcXqI8/edit#gid=0)
 * [VProFX's Interactive Map of Beacon Locations](http://galaxysedgetech.epizy.com/?i=1)
 * [Galaxy's Edge Research - Bluetooth Beacons](https://docs.google.com/spreadsheets/d/13P_GE6tNYpGvoVUTEQvA3SQzMqpZ-SoiWaTNoJoTV9Q/edit#gid=372067469)
+* [YohanUM's Beacon Location Data](https://www.google.com/maps/d/edit?mid=1pdCcMcTHQzcOOTIz-Lv1uYqqjWI-jDQ)
