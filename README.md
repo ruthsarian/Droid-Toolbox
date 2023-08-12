@@ -32,7 +32,7 @@ This code was specifically designed for [LILYGO TTGO T-Display](https://www.lily
 * The button at the bottom-left (below the USB port) is Button 2.
 
 ## Operation
-![Image of a TTGO with the Droid Toolbox splash screen in an Aurebesh font.](images/v0.65_01_splash_aurebesh.jpg)
+![Image of a TTGO with the Droid Toolbox splash screen in an Aurebesh font.](images/v0.65_01_aurebesh_splash.jpg)
 * At startup the droid toolbox displays a splash screen.
 * While at the splash screen you can change the display font used by the droid toolbox.
 * To change the font press and hold the button 1 for at least 1 second then release it.
