@@ -1,12 +1,12 @@
 /* Droid Toolbox v0.65 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
- * NOTE: your droid remote MUST BE OFF for this to work!
  * 
  * Features
  *   - Scan for nearby droids
  *   - Generate location and droid beacons
  *   - Control audio produced by droids
+ *   - Selectable display fonts
  * 
  * Designed to be used with a LilyGO TTGO T-Display or LilyGO T-Display-S3 which are ESP32-based modules with an LCD display, although
  * it should work with any ESP32 module and some small code changes.
@@ -103,6 +103,8 @@
  *   is there any value in scanning for SWGE East/West beacon (used by the Disney Play app) and identifying which location you're in based off that?
  *   ability save beacons that are defined in EXPERT mode?
  *   store currently selected font in non-volatile memory and retrieve on boot
+ *   ** fix expert location beacon
+ *   ** 
  *
  * HISTORY
  *   v0.65 : added support for custom fonts via OpenFontRenderer (https://github.com/takkaO/OpenFontRender)
@@ -2432,16 +2434,16 @@ void button1(button_press_t press_type) {
 
         if (beacon.type == DROID) {
           beacon.type = LOCATION;
-          beacon.setting[BEACON_PARAM_DROID_ID]     = 1;  // default location
-          beacon.setting[BEACON_PARAM_DROID_AFFL]   = 2;  // default interval
-          beacon.setting[BEACON_PARAM_DROID_PAIRED] = 38; // default minimim rssi
-          beacon.setting[BEACON_PARAM_DROID_BDROID] = 0;  // be a droid
+          beacon.setting[BEACON_PARAM_LCTN_ID]      = 1;  // default location
+          beacon.setting[BEACON_PARAM_LCTN_REACT]   = 2;  // default interval
+          beacon.setting[BEACON_PARAM_LCTN_RSSI]    = 38; // default minimim rssi
+          beacon.setting[BEACON_PARAM_LCTN_PARAM4]  = 0;  // unused
         } else {
           beacon.type = DROID;
-          beacon.setting[BEACON_PARAM_LCTN_ID]      = 1; // default personality
-          beacon.setting[BEACON_PARAM_LCTN_REACT]   = 1; // default affiliation
-          beacon.setting[BEACON_PARAM_LCTN_RSSI]    = 1; // default paired
-          beacon.setting[BEACON_PARAM_LCTN_PARAM4]  = 0; // unused
+          beacon.setting[BEACON_PARAM_DROID_ID]     = 1; // default personality
+          beacon.setting[BEACON_PARAM_DROID_AFFL]   = 1; // default affiliation
+          beacon.setting[BEACON_PARAM_DROID_PAIRED] = 1; // default paired
+          beacon.setting[BEACON_PARAM_DROID_BDROID] = 0; // be a droid
         }
 
       // change beacon parameters
@@ -2488,6 +2490,7 @@ void button1(button_press_t press_type) {
               if (beacon.setting[i] > 7) {
                 beacon.setting[i] = 0;
               }
+              break;
 
             // reset minimium rssi value if it goes outside of limits
             case BEACON_PARAM_LCTN_RSSI:
@@ -2499,7 +2502,6 @@ void button1(button_press_t press_type) {
                 beacon.setting[i] = 20;
               }
               break;
-
           }
         }
 
