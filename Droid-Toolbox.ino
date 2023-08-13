@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.65 : ruthsarian@gmail.com
+/* Droid Toolbox v0.66 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * 
@@ -107,6 +107,7 @@
  *     add option, through defines, to rotate display 180 degrees so buttons are on the right
  *
  * HISTORY
+ *   v0.66 : added TFGunray font; originally added for demonstration 
  *   v0.65 : added support for custom fonts via OpenFontRenderer (https://github.com/takkaO/OpenFontRender)
  *             - added a few fonts from aurekfonts.github.io that were labeled as free for personal and commercial use
  *             - added several functions (dtb_*) to assist in supporting custom fonts
@@ -179,13 +180,14 @@
   #include "Aurebeshred-Bold.h"
   #include "Aurabesh.h"
   #include "DroidobeshDepot-RegularModified.h"
+  #include "TFGunray-Bold.h"
 #endif
 
 #define C565(r,g,b)                         ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)    // macro to convert RGB values to TFT_eSPI color value
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.65"                 // the version displayed on the splash screen at the lower right
+#define MSG_VERSION                         "v0.66"                 // the version displayed on the splash screen at the lower right
 
 #define DEFAULT_TEXT_SIZE                   2                       // a generic size used throughout 
 #define DEFAULT_TEXT_COLOR                  TFT_DARKGREY            // e.g. 'turn off your droid remote'
@@ -471,6 +473,7 @@ const char* msg_beacon_location_param[NUM_BEACON_PARAMS] = {
     { DroidobeshDepotRegularModified, sizeof(DroidobeshDepotRegularModified),  0.9, -0.06 },
     { Aurabesh,                       sizeof(Aurabesh),                        1.0, -0.06 },
     { AurebeshRedBold,                sizeof(AurebeshRedBold),                 1.0, -0.14 },
+    { TFGunrayBold,                   sizeof(TFGunrayBold),                    1.0,  0    },
   };
 
   #define NUM_FONTS (sizeof(dtb_fonts)/sizeof(dtb_font_t))
