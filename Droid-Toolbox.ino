@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.66 : ruthsarian@gmail.com
+/* Droid Toolbox v0.66a : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * 
@@ -181,13 +181,15 @@
   #include "Aurabesh.h"
   #include "DroidobeshDepot-RegularModified.h"
   #include "TFGunray-Bold.h"
+  #include "MandoAF-Classic.h"
+  #include "MandoAF-Regular.h"
 #endif
 
 #define C565(r,g,b)                         ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)    // macro to convert RGB values to TFT_eSPI color value
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.66"                 // the version displayed on the splash screen at the lower right
+#define MSG_VERSION                         "v0.66a"                 // the version displayed on the splash screen at the lower right
 
 #define DEFAULT_TEXT_SIZE                   2                       // a generic size used throughout 
 #define DEFAULT_TEXT_COLOR                  TFT_DARKGREY            // e.g. 'turn off your droid remote'
@@ -474,6 +476,8 @@ const char* msg_beacon_location_param[NUM_BEACON_PARAMS] = {
     { Aurabesh,                       sizeof(Aurabesh),                        1.0, -0.06 },
     { AurebeshRedBold,                sizeof(AurebeshRedBold),                 1.0, -0.14 },
     { TFGunrayBold,                   sizeof(TFGunrayBold),                    1.0,  0    },
+    { MandoAFRegular,                 sizeof(MandoAFRegular),                  1.0,  0.14 },
+    { MandoAFClassic,                 sizeof(MandoAFClassic),                  1.0,  0.14 },
   };
 
   #define NUM_FONTS (sizeof(dtb_fonts)/sizeof(dtb_font_t))
