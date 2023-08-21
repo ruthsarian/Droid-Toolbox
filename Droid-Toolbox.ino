@@ -94,11 +94,6 @@
  *     ability to connect to a single droid and send 'raw' commands
  *        control LEDs
  *        control motors (is this a GOOD idea? probably not...)
- *   beacon:
- *     create a cycle beacon type; this type will cycle through beacons every X number of minutes
- *       a location cycle beacon that will cycle through locations
- *       a droid cycle beacon that will cycle through droids
- *       a random cycle beacon that will cycle through all of them
  *   other: 
  *     is there any value in scanning for SWGE East/West beacon (used by the Disney Play app) and identifying which location you're in based off that?
  *     ability save beacons that are defined in EXPERT mode?
@@ -107,7 +102,8 @@
  *     add option, through defines, to rotate display 180 degrees so buttons are on the right
  *
  * HISTORY
- *   v0.67 : TODO: rotating beacons
+ *   v0.67 : added rotating beacon option
+ *           TODO: add ability to set rotation interval
  *   v0.66 : added TFGunray font; originally added for demonstration 
  *   v0.65 : added support for custom fonts via OpenFontRenderer (https://github.com/takkaO/OpenFontRender)
  *             - added a few fonts from aurekfonts.github.io that were labeled as free for personal and commercial use
@@ -735,7 +731,7 @@ list_t lists[NUM_LISTS];
 
   int8_t droid_volume = 100;          // there is no way to 'read' the current volume setting, so we'll keep track with a variable and assume it starts at full (100) volume
  uint8_t selected_item = 0;           // keep track of the currently selected option when displaying menus, options, etc.
- uint8_t beacon_rotate_interval = 6;  // this value, multiplied by 10, defines the number of seconds before the current beacon changes; when set to 0 the beacon rotation feature is disabled
+ uint8_t beacon_rotate_interval = 15; // this value, multiplied by 10, defines the number of seconds before the current beacon changes; when set to 0 the beacon rotation feature is disabled
 uint32_t next_beacon_time = 0;        // the time, in ms, when the next beacon change will occur
 
 TFT_eSPI tft = TFT_eSPI();      // display interface
