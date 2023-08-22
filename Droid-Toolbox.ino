@@ -102,8 +102,7 @@
  *     add option, through defines, to rotate display 180 degrees so buttons are on the right
  *
  * HISTORY
- *   v0.67 : added rotating beacon option
- *           TODO: add ability to set rotation interval
+ *   v0.67 : added rotating beacon option; includes abilty to set beacon interval between 60 and 1440 seconds.
  *   v0.66 : added TFGunray font; originally added for demonstration 
  *   v0.65 : added support for custom fonts via OpenFontRenderer (https://github.com/takkaO/OpenFontRender)
  *             - added a few fonts from aurekfonts.github.io that were labeled as free for personal and commercial use
@@ -184,7 +183,7 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.67 beta"                 // the version displayed on the splash screen at the lower right; β
+#define MSG_VERSION                         "v0.67"                 // the version displayed on the splash screen at the lower right; β
 
 #define DEFAULT_TEXT_SIZE                   2                       // a generic size used throughout 
 #define DEFAULT_TEXT_COLOR                  TFT_DARKGREY            // e.g. 'turn off your droid remote'
@@ -206,6 +205,17 @@
 #define MENU_SELECT_TEXT_COLOR              C565(0,64,0)
 #define MENU_SELECT_SELECTED_TEXT_COLOR     TFT_GREEN
 #define MENU_SELECT_SELECTED_BORDER_COLOR   TFT_BLUE
+
+#define BEACON_INTERVAL_TITLE_TEXT_SIZE     DEFAULT_TEXT_SIZE
+#define BEACON_INTERVAL_TITLE_COLOR         TFT_BLUE
+
+#define BEACON_INTERVAL_VALUE_TEXT_SIZE     (DEFAULT_TEXT_SIZE + 1)
+#define BEACON_INTERVAL_VALUE_COLOR         TFT_RED
+#define BEACON_INTERVAL_VALUE_COLOR_S       TFT_GREEN
+#define BEACON_INTERVAL_SET_TEXT_SIZE       (DEFAULT_TEXT_SIZE + 1)
+#define BEACON_INTERVAL_SET_COLOR           TFT_BROWN
+#define BEACON_INTERVAL_SET_COLOR_S         TFT_YELLOW
+#define BEACON_INTERVAL_TEXT_PADDING        DEFAULT_TEXT_PADDING
 
 #define BEACON_CONTROL_TEXT_SIZE            (DEFAULT_TEXT_SIZE + 1)
 #define BEACON_CONTROL_TEXT_PADDING         DEFAULT_TEXT_PADDING
@@ -305,6 +315,9 @@ const char msg_play[]                   = "PLAY";
 const char msg_vol_inc[]                = "VOL+";
 const char msg_vol_dec[]                = "VOL-";
 const char msg_set_vol[]                = "SET VOLUME";
+const char msg_set_beacon_interval[]    = "SET BEACON INTERVAL";
+const char msg_int_sec[]                = "%d sec";
+const char msg_set_interval[]           = "START BEACON";
 
 typedef struct {
   uint8_t id;           // personality ID, unique for each personality
@@ -1267,12 +1280,22 @@ void set_location_beacon(uint8_t location) {
 
 // populate the global beacon variable with random(ish) values
 void set_random_beacon() {
-  SERIAL_PRINTLN("Generating a random beacon.");
-  if (esp_random() % 2)  {
-    set_droid_beacon(0);      // create a DROID beacon
-  } else {
-    set_location_beacon(0);   // create a LOCATION beacon
-  }
+  static beacon_type_t old_type = DROID;
+  static uint8_t old_id = 0;
+
+  do {
+    SERIAL_PRINTLN("Generating a random beacon.");
+    if (esp_random() % 2)  {
+      set_droid_beacon(0);      // create a DROID beacon
+    } else {
+      set_location_beacon(0);   // create a LOCATION beacon
+    }
+
+  // generate a random beacon, again, if it's the same value as the previous (old) beacon
+  } while (old_type == beacon.type && old_id == beacon.setting[BEACON_PARAM_LCTN_ID]);
+
+  old_type = beacon.type;
+  old_id = beacon.setting[BEACON_PARAM_LCTN_ID];
 }
 
 // set the advertising payload based on the data in the global beacon variable
@@ -1695,6 +1718,43 @@ void display_captioned_menu(const char* caption, uint8_t list_index) {
 
   // display the menu
   display_list(list_index);
+}
+
+
+void display_set_interval() {
+  char msg[MSG_LEN_MAX];
+  uint16_t y, content_height;
+  uint8_t gap, bfs;
+
+  // line 1: set beacon interval
+  // line 2: %d sec
+  // line 3: gap
+  // line 4: start 
+
+  // set the default font size to 1 and get the pixel height of the text at this size; this will be the base unit used to calculate the size of everything on the screen
+  tft.setTextSize(1);
+  bfs = tft.fontHeight();
+
+  // calclualte a gap between the beacon title and the activate option
+  gap = (bfs * BEACON_CONTROL_TEXT_SIZE) / 2;
+
+  // calculate the height of the content to vertically align everything
+  content_height = (bfs * BEACON_INTERVAL_TITLE_TEXT_SIZE) + (bfs * BEACON_INTERVAL_VALUE_TEXT_SIZE) + gap + (bfs * BEACON_INTERVAL_SET_TEXT_SIZE) + (BEACON_INTERVAL_TEXT_PADDING * 3);
+
+  // calculate where to begin drawing text  
+  y = (tft.getViewportHeight() - content_height)/2;
+
+  // display title
+  dtb_draw_string(msg_set_beacon_interval, tft.getViewportWidth()/2, y, DEFAULT_TEXT_FIT_WIDTH, BEACON_INTERVAL_TITLE_TEXT_SIZE, BEACON_INTERVAL_TITLE_COLOR, TC_DATUM);
+  y += (bfs * BEACON_INTERVAL_TITLE_TEXT_SIZE) + BEACON_INTERVAL_TEXT_PADDING;
+
+  // display current interval
+  snprintf(msg, MSG_LEN_MAX, msg_int_sec, beacon_rotate_interval * 10);
+  dtb_draw_string(msg, tft.getViewportWidth()/2, y, DEFAULT_TEXT_FIT_WIDTH, BEACON_INTERVAL_VALUE_TEXT_SIZE, (selected_item == 0 ? BEACON_INTERVAL_VALUE_COLOR_S : BEACON_INTERVAL_VALUE_COLOR), TC_DATUM);
+  y += (bfs * BEACON_INTERVAL_VALUE_TEXT_SIZE) + gap + (BEACON_INTERVAL_TEXT_PADDING * 2) ;
+
+  // display set interval action
+  dtb_draw_string(msg_set_interval, tft.getViewportWidth()/2, y, DEFAULT_TEXT_FIT_WIDTH, BEACON_INTERVAL_SET_TEXT_SIZE, (selected_item == 1 ? BEACON_INTERVAL_SET_COLOR_S : BEACON_INTERVAL_SET_COLOR), TC_DATUM);
 }
 
 void display_beacon_control() {
@@ -2336,6 +2396,10 @@ void update_display() {
       display_captioned_menu(msg_select_beacon, LIST_LOCATIONS);
       break;
 
+    case BEACON_SET_INTERVAL:    // display_set_interval()
+      display_set_interval();
+      break;
+
     case BEACON_TYPE_MENU:       // display_beacon_type_menu()
       display_captioned_menu(msg_select_beacon_type, LIST_BEACON_TYPE_MENU);
       break;
@@ -2432,9 +2496,8 @@ void button1(button_press_t press_type) {
 
       // initiate a rotating beacon
       } else if (state == BEACON_ROTATING) {
-        next_beacon_time = millis() + (beacon_rotate_interval * 10000);
-        set_random_beacon();
-        state = BEACON_ACTIVATE;
+        state = BEACON_SET_INTERVAL;
+        selected_item = 0;
 
       } else if (state == BEACON_EXPERT) {
 
@@ -2445,6 +2508,30 @@ void button1(button_press_t press_type) {
         selected_item = 0;
       } else {
         selected_item = 0;
+      }
+      tft_update = true;
+      break;
+
+    case BEACON_SET_INTERVAL:
+      if (selected_item == 0) {
+        if (beacon_rotate_interval >= 144) {
+          beacon_rotate_interval = 6;
+        } else {
+          if (press_type == SHORT_PRESS) {
+            beacon_rotate_interval += 1;
+          } else {
+            beacon_rotate_interval += 10;
+          }
+          if (beacon_rotate_interval > 144) {
+            beacon_rotate_interval = 144;
+          }
+        }
+      } else {
+        set_random_beacon();
+        next_beacon_time = 1;
+        state = BEACON_ACTIVATE;
+        selected_item = 0;
+        button1(SHORT_PRESS);
       }
       tft_update = true;
       break;
@@ -2701,6 +2788,31 @@ void button2(button_press_t press_type) {
       tft_update = true;
       break;
 
+    case BEACON_SET_INTERVAL:
+
+      // if a back menu button press...
+      if (press_type == LONG_PRESS) {
+
+        // find the location of rotating beacon in the beacon type menu
+        for (selected_item=0; selected_item < (sizeof(beacon_type_menu) / sizeof(menu_item_t)); selected_item++) {
+          if (beacon_type_menu[selected_item].state == BEACON_ROTATING) {
+            break;
+          }
+        }
+
+        // if rotating beacon type wasn't found in the menu then just set selected_item to the first item in the list
+        if (selected_item >= (sizeof(beacon_type_menu) / sizeof(menu_item_t))) {
+          next_beacon_time = 0;
+          selected_item = 0;
+        }
+        state = BEACON_TYPE_MENU;
+
+      } else {
+        selected_item = (selected_item+1) % 2;
+      }
+      tft_update = true;
+      break;
+
     case BEACON_LOCATION_LIST:
       if (press_type == LONG_PRESS) {
         state = BEACON_TYPE_MENU;
@@ -2740,22 +2852,9 @@ void button2(button_press_t press_type) {
 
         // if exiting a rotating beacon
         if (next_beacon_time != 0) {
-          state = BEACON_TYPE_MENU;
-
-          // find the location of rotating beacon in the beacon type menu
-          for (selected_item=0; selected_item < (sizeof(beacon_type_menu) / sizeof(menu_item_t)); selected_item++) {
-            if (beacon_type_menu[selected_item].state == BEACON_ROTATING) {
-              next_beacon_time = 0;
-              break;
-            }
-          }
-
-          // if rotating beacon type wasn't found in the menu then just set selected_item to the first item in the list
-          if (next_beacon_time != 0) {
-            next_beacon_time = 0;
-            selected_item = 0;
-          }
-
+          state = BEACON_SET_INTERVAL;
+          next_beacon_time = 0;
+          selected_item = 1;
         } else if (beacon.type == DROID) {
           state = BEACON_DROID_LIST;
         } else {
