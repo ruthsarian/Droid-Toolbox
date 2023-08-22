@@ -1,4 +1,4 @@
-# Droid Toolbox - v0.67
+# Droid Toolbox - v0.68
 This is an [Arduino IDE](https://www.arduino.cc/en/software) sketch for ESP32-based devices to interact with [Galaxy's Edge droids](https://disneyworld.disney.go.com/shops/hollywood-studios/droid-depot/). It can emit a bluetooth beacon that droids will react to, scan for nearby droids, and connect to droids and command them to play specific audio tracks from their personality chip. A YouTube video of the Droid Toolbox in action is available at https://www.youtube.com/watch?v=0sHTIEbTevk.
 
 This code was specifically designed for [LILYGO TTGO T-Display](https://www.lilygo.cc/products/lilygo%C2%AE-ttgo-t-display-1-14-inch-lcd-esp32-control-board) and [LILYGO T-Display-S3](https://www.lilygo.cc/products/t-display-s3) devices and may not display correctly on other ESP32 devices without modification.
@@ -63,7 +63,7 @@ This code was specifically designed for [LILYGO TTGO T-Display](https://www.lily
   * **Location** beacons represent different areas of Galaxy's Edge
   * **Droid** beacons represent individual droids and their current personality chip
   * **Random** will select a beacon at random
-  * **Rotating** randomly select and activate a beacon at a preset interval
+  * **Rotating** randomly select and activate a location beacon at a preset interval
   * **Expert** For those who want to experiment
 
 ![Image of a TTGO showing a 'select a beacon' menu on the display.](images/v0.60_09_select_beacon.jpg)

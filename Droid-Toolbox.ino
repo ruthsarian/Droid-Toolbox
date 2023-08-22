@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.67 : ruthsarian@gmail.com
+/* Droid Toolbox v0.68 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * 
@@ -102,6 +102,8 @@
  *     add option, through defines, to rotate display 180 degrees so buttons are on the right
  *
  * HISTORY
+ *   v0.68 : limited rotating beacons to just location beacon types. reason is that droids will not respond to a droid beacon if it's seen a
+ *           location beacon within the last 2 hours. 
  *   v0.67 : added rotating beacon option; includes abilty to set beacon interval between 60 and 1440 seconds.
  *   v0.66 : added TFGunray font; originally added for demonstration 
  *   v0.65 : added support for custom fonts via OpenFontRenderer (https://github.com/takkaO/OpenFontRender)
@@ -1280,21 +1282,26 @@ void set_location_beacon(uint8_t location) {
 
 // populate the global beacon variable with random(ish) values
 void set_random_beacon() {
-  static beacon_type_t old_type = DROID;
+
+  SERIAL_PRINTLN("Generating a random beacon.");
+  if (esp_random() % 2)  {
+    set_droid_beacon(0);      // create a DROID beacon
+  } else {
+    set_location_beacon(0);   // create a LOCATION beacon
+  }
+}
+
+void set_rotating_beacon() {
   static uint8_t old_id = 0;
 
+  SERIAL_PRINTLN("Generating the next rotating beacon.");
+
   do {
-    SERIAL_PRINTLN("Generating a random beacon.");
-    if (esp_random() % 2)  {
-      set_droid_beacon(0);      // create a DROID beacon
-    } else {
-      set_location_beacon(0);   // create a LOCATION beacon
-    }
+    set_location_beacon(0);
 
   // generate a random beacon, again, if it's the same value as the previous (old) beacon
-  } while (old_type == beacon.type && old_id == beacon.setting[BEACON_PARAM_LCTN_ID]);
+  } while (old_id == beacon.setting[BEACON_PARAM_LCTN_ID]);
 
-  old_type = beacon.type;
   old_id = beacon.setting[BEACON_PARAM_LCTN_ID];
 }
 
@@ -2527,7 +2534,7 @@ void button1(button_press_t press_type) {
           }
         }
       } else {
-        set_random_beacon();
+        set_rotating_beacon();
         next_beacon_time = 1;
         state = BEACON_ACTIVATE;
         selected_item = 0;
@@ -3182,7 +3189,7 @@ void loop() {
 
           // set a new beacon at random
           // TODO: add some code to make sure we don't repeat the same beacon twice
-          set_random_beacon();
+          set_rotating_beacon();
           next_beacon_time = millis() + (beacon_rotate_interval * 10000);
 
           // start the new beacon
