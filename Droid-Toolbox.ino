@@ -161,7 +161,7 @@
  */
 
 #define USE_OFR_FONTS           // uncomment to use openFontRenderer (see notes above on how to install this library)
-#define SERIAL_DEBUG_ENABLE     // uncomment to enable serial debug/monitor messages
+//#define SERIAL_DEBUG_ENABLE     // uncomment to enable serial debug/monitor messages
 
 #include <TFT_eSPI.h>
 #include <SPI.h>
