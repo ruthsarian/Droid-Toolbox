@@ -1,4 +1,4 @@
-# Droid Toolbox - v0.66
+# Droid Toolbox - v0.67
 This is an [Arduino IDE](https://www.arduino.cc/en/software) sketch for ESP32-based devices to interact with [Galaxy's Edge droids](https://disneyworld.disney.go.com/shops/hollywood-studios/droid-depot/). It can emit a bluetooth beacon that droids will react to, scan for nearby droids, and connect to droids and command them to play specific audio tracks from their personality chip. A YouTube video of the Droid Toolbox in action is available at https://www.youtube.com/watch?v=0sHTIEbTevk.
 
 This code was specifically designed for [LILYGO TTGO T-Display](https://www.lilygo.cc/products/lilygo%C2%AE-ttgo-t-display-1-14-inch-lcd-esp32-control-board) and [LILYGO T-Display-S3](https://www.lilygo.cc/products/t-display-s3) devices and may not display correctly on other ESP32 devices without modification.
@@ -8,8 +8,10 @@ This code was specifically designed for [LILYGO TTGO T-Display](https://www.lily
 ## Features
 * Select between emitting a beacon or scanning for nearby droids.
 * The emitted beacon can be selected/customized.
+* Emitted beacons can automatically change at a pre-defined interval.
 * Connect to droid and make is play a specific track from a specific audio group.
 * Change the volume level of the droid.
+* Select from several different font styles.
 * Auto shut-off.
 
 ## Setup and Installation
@@ -61,10 +63,16 @@ This code was specifically designed for [LILYGO TTGO T-Display](https://www.lily
   * **Location** beacons represent different areas of Galaxy's Edge
   * **Droid** beacons represent individual droids and their current personality chip
   * **Random** will select a beacon at random
+  * **Rotating** randomly select and activate a beacon at a preset interval
   * **Expert** For those who want to experiment
 
 ![Image of a TTGO showing a 'select a beacon' menu on the display.](images/v0.60_09_select_beacon.jpg)
 * If you selected location or droid, select the location or droid beacon you would like to emit.
+
+![Image of a TTGO showing a 'set beacon interval' option on the display.](images/v0.67_09a.jpg)'
+* If you selected rotating, set the interval between beacon changes. This can be any value from 60 to 1440 seconds. A short button 1 press increases the interval by 10 seconds. A long button 1 press increases the interval by 100 seconds.
+* Once you've set the interval you want, short press button 2 to highlight 'start beacon' then press button 1 to start the rotating beacons.
+* When in rotating beacon mode, a countdown is displayed in the lower-right corner of the display.
 
 ![Image of a TTGO showing a 'select a beacon' menu on the display.](images/v0.60_10_beacon_active.jpg)
 * Once your beacon is selected you'll be shown a screen identifying the beacon and whether or not it is active.
