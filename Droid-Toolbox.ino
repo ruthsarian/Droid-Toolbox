@@ -1291,6 +1291,7 @@ void set_random_beacon() {
   }
 }
 
+// generate a random location beacon for the next rotating beacon. make sure we don't repeat locations.
 void set_rotating_beacon() {
   static uint8_t old_id = 0;
 
