@@ -102,8 +102,9 @@
  *     add option, through defines, to rotate display 180 degrees so buttons are on the right
  *
  * HISTORY
- *   v0.68 : limited rotating beacons to just location beacon types. reason is that droids will not respond to a droid beacon if it's seen a
- *           location beacon within the last 2 hours. 
+ *   v0.68 : limited rotating beacons to just location beacon types. reason is that droids will not respond to a droid beacon if it's seen a location beacon within the last 2 hours. 
+ *           added a few defines to let you control the interval settings for short and long presses
+ *           changed initial interval to 60 seconds
  *   v0.67 : added rotating beacon option; includes abilty to set beacon interval between 60 and 1440 seconds.
  *   v0.66 : added TFGunray font; originally added for demonstration 
  *   v0.65 : added support for custom fonts via OpenFontRenderer (https://github.com/takkaO/OpenFontRender)
@@ -185,7 +186,7 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.68"                 // the version displayed on the splash screen at the lower right; β
+#define MSG_VERSION                         "v0.68a"                 // the version displayed on the splash screen at the lower right; β
 
 #define DEFAULT_TEXT_SIZE                   2                       // a generic size used throughout 
 #define DEFAULT_TEXT_COLOR                  TFT_DARKGREY            // e.g. 'turn off your droid remote'
@@ -210,7 +211,6 @@
 
 #define BEACON_INTERVAL_TITLE_TEXT_SIZE     DEFAULT_TEXT_SIZE
 #define BEACON_INTERVAL_TITLE_COLOR         TFT_BLUE
-
 #define BEACON_INTERVAL_VALUE_TEXT_SIZE     (DEFAULT_TEXT_SIZE + 1)
 #define BEACON_INTERVAL_VALUE_COLOR         TFT_RED
 #define BEACON_INTERVAL_VALUE_COLOR_S       TFT_GREEN
@@ -267,6 +267,9 @@
 
 #define SLEEP_AFTER                         5 * 60 * 1000   // how many milliseconds of inactivity before going to sleep/hibernation
 #define DEFAULT_BEACON_REACTION_TIME        2               // how many minutes to wait between reactions to the beacon being broadcast; ((esp_random() % 3) + 1)
+#define MAX_BEACON_CHANGE_INTERVAL          120             // this is multiplied by 10
+#define SHORT_PRESS_INTERVAL_INC            1               // this is multiplied by 10
+#define LONG_PRESS_INTERVAL_INC             10              // this is multiplied by 10
 
 // static strings used throughout DroidToolbox
 const char ble_adv_name[]               = "DROIDTLBX";              // this is the name the toolbox's beacon will appear as, keep to 10 characters or less
@@ -746,7 +749,7 @@ list_t lists[NUM_LISTS];
 
   int8_t droid_volume = 100;          // there is no way to 'read' the current volume setting, so we'll keep track with a variable and assume it starts at full (100) volume
  uint8_t selected_item = 0;           // keep track of the currently selected option when displaying menus, options, etc.
- uint8_t beacon_rotate_interval = 15; // this value, multiplied by 10, defines the number of seconds before the current beacon changes; when set to 0 the beacon rotation feature is disabled
+ uint8_t beacon_rotate_interval = 6;  // this value, multiplied by 10, defines the number of seconds before the current beacon changes; when set to 0 the beacon rotation feature is disabled
 uint32_t next_beacon_time = 0;        // the time, in ms, when the next beacon change will occur
 
 TFT_eSPI tft = TFT_eSPI();      // display interface
@@ -2522,16 +2525,16 @@ void button1(button_press_t press_type) {
 
     case BEACON_SET_INTERVAL:
       if (selected_item == 0) {
-        if (beacon_rotate_interval >= 144) {
+        if (beacon_rotate_interval >= MAX_BEACON_CHANGE_INTERVAL) {
           beacon_rotate_interval = 6;
         } else {
           if (press_type == SHORT_PRESS) {
-            beacon_rotate_interval += 1;
+            beacon_rotate_interval += SHORT_PRESS_INTERVAL_INC;
           } else {
-            beacon_rotate_interval += 10;
+            beacon_rotate_interval += LONG_PRESS_INTERVAL_INC;
           }
-          if (beacon_rotate_interval > 144) {
-            beacon_rotate_interval = 144;
+          if (beacon_rotate_interval > MAX_BEACON_CHANGE_INTERVAL) {
+            beacon_rotate_interval = MAX_BEACON_CHANGE_INTERVAL;
           }
         }
       } else {
