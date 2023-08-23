@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.68 : ruthsarian@gmail.com
+/* Droid Toolbox v0.68a : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * 
@@ -267,8 +267,8 @@
 
 #define SLEEP_AFTER                         5 * 60 * 1000   // how many milliseconds of inactivity before going to sleep/hibernation
 #define DEFAULT_BEACON_REACTION_TIME        2               // how many minutes to wait between reactions to the beacon being broadcast; ((esp_random() % 3) + 1)
-#define MAX_BEACON_CHANGE_INTERVAL          120             // this is multiplied by 10
-#define SHORT_PRESS_INTERVAL_INC            1               // this is multiplied by 10
+#define MAX_BEACON_CHANGE_INTERVAL          120             // this is multiplied by 10. should be no larger than 250.
+#define SHORT_PRESS_INTERVAL_INC            1               // this is multiplied by 10. 
 #define LONG_PRESS_INTERVAL_INC             10              // this is multiplied by 10
 
 // static strings used throughout DroidToolbox
