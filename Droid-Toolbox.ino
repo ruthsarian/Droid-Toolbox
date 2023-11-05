@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.68a : ruthsarian@gmail.com
+/* Droid Toolbox v0.69 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * 
@@ -81,6 +81,7 @@
  *     https://programmer.ink/think/arduino-development-tft_espi-library-learning.html
  *     https://programmer.ink/think/color-setting-and-text-display-esp32-learning-tour-arduino-version.html.
  *     https://github.com/nkolban/esp32-snippets/blob/fe3d318acddf87c6918944f24e8b899d63c816dd/cpp_utils/BLEAdvertisedDevice.h
+ *     https://randomnerdtutorials.com/esp32-save-data-permanently-preferences/
  *
  * TODO
  *   scanner:
@@ -97,11 +98,12 @@
  *   other: 
  *     is there any value in scanning for SWGE East/West beacon (used by the Disney Play app) and identifying which location you're in based off that?
  *     ability save beacons that are defined in EXPERT mode?
- *     store currently selected font in non-volatile memory and retrieve on boot
  *     revisit auto shutoff. can it not require a reset to wake up?
  *     add option, through defines, to rotate display 180 degrees so buttons are on the right
  *
  * HISTORY
+ *   v0.69 : The Wayfinder Version 
+ *           Toolbox remembers font selection through reboot/power cycle
  *   v0.68 : limited rotating beacons to just location beacon types. reason is that droids will not respond to a droid beacon if it's seen a location beacon within the last 2 hours. 
  *           added a few defines to let you control the interval settings for short and long presses
  *           changed initial interval to 60 seconds
@@ -164,6 +166,7 @@
  */
 
 #define USE_OFR_FONTS           // uncomment to use openFontRenderer (see notes above on how to install this library)
+#define USE_NVS                 // uncomment to enable use of non-volatile storage (NVS) to save preferences (last font used);
 //#define SERIAL_DEBUG_ENABLE     // uncomment to enable serial debug/monitor messages
 
 #include <TFT_eSPI.h>
@@ -182,11 +185,17 @@
   #include "TFGunray-Bold.h"
 #endif
 
+#if defined (USE_NVS) && defined (USE_OFR_FONTS)  // no point in enabling saving of font preferences if OFR_FONTS aren't being used
+  #include <Preferences.h>
+  #define PREF_APP_NAME     "droid-toolbox"       // the name should not be changed
+  Preferences preferences;                        // create a preferences object to store variables in non-volatile storage (NVS)
+#endif
+
 #define C565(r,g,b)                         ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)    // macro to convert RGB values to TFT_eSPI color value
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.68a"                 // the version displayed on the splash screen at the lower right; β
+#define MSG_VERSION                         "v0.69"                 // the version displayed on the splash screen at the lower right; β
 
 #define DEFAULT_TEXT_SIZE                   2                       // a generic size used throughout 
 #define DEFAULT_TEXT_COLOR                  TFT_DARKGREY            // e.g. 'turn off your droid remote'
@@ -1150,6 +1159,22 @@ void dtb_draw_string(const char* str, int32_t draw_x, int32_t draw_y, uint32_t d
   }
 
   #endif  // USE_OFR_FONTS
+}
+
+// load the font specified by dtb_font
+void dtb_load_font() {
+
+  #ifdef USE_OFR_FONTS
+
+    // load the new font
+    ofr.unloadFont();
+    if (dtb_font != 0 && ofr.loadFont(dtb_fonts[dtb_font - 1].data, dtb_fonts[dtb_font - 1].size)) {
+      dtb_font = 0;
+    }
+
+    // recalculate font properties based on new font
+    list_calculate_dynamic_font_properties();
+  #endif
 }
 
 personality_t* get_droid_personality(uint8_t id) {
@@ -2450,16 +2475,15 @@ void button1(button_press_t press_type) {
             }
 
             // load the new font
-            ofr.unloadFont();
-            if (dtb_font != 0 && ofr.loadFont(dtb_fonts[dtb_font - 1].data, dtb_fonts[dtb_font - 1].size)) {
-              dtb_font = 0;
-            }
-
-            // recalculate font properties based on new font
-            list_calculate_dynamic_font_properties();
+            dtb_load_font();
 
         // otherwise go to the top menu
         } else {
+
+          // before exiting the splash screen, store the current font to NVS
+          #ifdef USE_NVS
+            preferences.putUChar("dtb_font", dtb_font);
+          #endif
       #endif
 
         state = TOP_MENU;
@@ -2768,6 +2792,12 @@ void button2(button_press_t press_type) {
   // do button 2 stuff
   switch (state) {
     case SPLASH:
+
+      // before exiting the splash screen, store the current font to NVS
+      #if defined (USE_OFR_FONTS) && defined (USE_NVS)
+        preferences.putUChar("dtb_font", dtb_font);
+      #endif
+
       state = TOP_MENU;
       selected_item = 0;
       tft_update = true;
@@ -3117,6 +3147,16 @@ void setup() {
   // initialize the lists used for rendering menus
   list_init();
   list_calculate_dynamic_font_properties();
+
+  // initialize NVS
+  #if defined (USE_NVS) && defined (USE_OFR_FONTS)
+    preferences.begin(PREF_APP_NAME, false); 
+    //preferences.clear();
+
+    // load stored font
+    dtb_font = (uint8_t)preferences.getUChar("dtb_font", 0);
+    dtb_load_font();
+  #endif
 
   // init serial debug messaging
   SERIAL_BEGIN(115200);
