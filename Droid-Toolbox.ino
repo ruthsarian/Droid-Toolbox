@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.69 : ruthsarian@gmail.com
+/* Droid Toolbox v0.70 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * 
@@ -25,7 +25,7 @@
  *  OpenFontRender: https://github.com/takkaO/OpenFontRender
  *  
  * NOTE 1: 
- *  After installing or updating the TFT_eSPI library you MUST edit User_Setup_Select.h as follows 
+ *  After installing _OR_UPDATING_ the TFT_eSPI library you _MUST_ edit User_Setup_Select.h as follows 
  *     1. comment out the line "#include <User_Setup.h>" (line 22-ish)
  *     2. uncomment the line "#include <User_Setups/Setup25_TTGO_T_Display.h>" (line 61-ish) for T-Display
  *        or "#include <User_Setups/Setup206_LilyGo_T_Display_S3.h>" for the T-Display-32
@@ -45,6 +45,11 @@
  *   to uninstall it in order for this code to compile correctly. To uninstall a library locate your arduino 
  *   libraries folder and delete the ArduinoBLE folder.
  *
+ * NOTE 4:
+ *   It seems when the serial port is open, button 0 doesn't work. If your T-Display is connected via USB to 
+ *   your computer and button 0 does not work, change the port in Arduino IDE to something else. Don't forget
+ *   to change it back when you want to upload new code to the T-Display.
+ *
  * TTGO T-Display Board Configuration (defaults)
  *   Board: ESP32 Dev Module
  *   Upload Speed: 921600
@@ -52,7 +57,7 @@
  *   Flash Freq: 80MHz
  *   Flash Mode: QIO
  *   Flash Size: 4MB (32Mb)
- *   Partition Scheme: Default 4MB with spiffs
+ *   Partition Scheme: Huge App (3MB No OTA/1MB SPIFFS)
  *   Core Debug Level: None
  *   PSRAM: Disabled
  * 
@@ -82,6 +87,7 @@
  *     https://programmer.ink/think/color-setting-and-text-display-esp32-learning-tour-arduino-version.html.
  *     https://github.com/nkolban/esp32-snippets/blob/fe3d318acddf87c6918944f24e8b899d63c816dd/cpp_utils/BLEAdvertisedDevice.h
  *     https://randomnerdtutorials.com/esp32-save-data-permanently-preferences/
+ *     https://espressif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/api/preferences.html
  *
  * TODO
  *   scanner:
@@ -102,6 +108,8 @@
  *     add option, through defines, to rotate display 180 degrees so buttons are on the right
  *
  * HISTORY
+ *   v0.70 : Fixed beacon menu font size issues with TTGO T-Display
+ *           thanks to Knucklebuster620 for bringing this issue to my attention
  *   v0.69 : The Wayfinder Version 
  *           Toolbox remembers font selection through reboot/power cycle
  *   v0.68 : limited rotating beacons to just location beacon types. reason is that droids will not respond to a droid beacon if it's seen a location beacon within the last 2 hours. 
@@ -168,6 +176,7 @@
 #define USE_OFR_FONTS           // uncomment to use openFontRenderer (see notes above on how to install this library)
 #define USE_NVS                 // uncomment to enable use of non-volatile storage (NVS) to save preferences (last font used);
 //#define SERIAL_DEBUG_ENABLE     // uncomment to enable serial debug/monitor messages
+                                // if using seridal debug, you may need to select HUGE APP from the partition scheme option under tools menu
 
 #include <TFT_eSPI.h>
 #include <SPI.h>
@@ -195,7 +204,7 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.69"                 // the version displayed on the splash screen at the lower right; β
+#define MSG_VERSION                         "v0.70"                 // the version displayed on the splash screen at the lower right; β
 
 #define DEFAULT_TEXT_SIZE                   2                       // a generic size used throughout 
 #define DEFAULT_TEXT_COLOR                  TFT_DARKGREY            // e.g. 'turn off your droid remote'
@@ -217,6 +226,9 @@
 #define MENU_SELECT_TEXT_COLOR              C565(0,64,0)
 #define MENU_SELECT_SELECTED_TEXT_COLOR     TFT_GREEN
 #define MENU_SELECT_SELECTED_BORDER_COLOR   TFT_BLUE
+
+#define BEACON_MENU_SELECT_TEXT_PADDING     8                       // beacon menus use MENU_SELECT_* values except for these two
+#define BEACON_MENU_SELECT_TEXT_SIZE        (DEFAULT_TEXT_SIZE + 1)
 
 #define BEACON_INTERVAL_TITLE_TEXT_SIZE     DEFAULT_TEXT_SIZE
 #define BEACON_INTERVAL_TITLE_COLOR         TFT_BLUE
@@ -847,9 +859,9 @@ void list_init() {
   for (i=0; i<lists[LIST_LOCATIONS].num_items; i++) {
     lists[LIST_LOCATIONS].items[i] = locations[i].name;
   }
-  lists[LIST_LOCATIONS].render_options.text_size              = MENU_SELECT_TEXT_SIZE;
+  lists[LIST_LOCATIONS].render_options.text_size              = BEACON_MENU_SELECT_TEXT_SIZE;
   lists[LIST_LOCATIONS].render_options.text_color             = MENU_SELECT_TEXT_COLOR;
-  lists[LIST_LOCATIONS].render_options.text_padding           = MENU_SELECT_TEXT_PADDING;
+  lists[LIST_LOCATIONS].render_options.text_padding           = BEACON_MENU_SELECT_TEXT_PADDING;
   lists[LIST_LOCATIONS].render_options.selected_text_color    = MENU_SELECT_SELECTED_TEXT_COLOR;
   lists[LIST_LOCATIONS].render_options.selected_border_color  = MENU_SELECT_SELECTED_BORDER_COLOR;
   lists[LIST_LOCATIONS].render_options.ofr_font_size          = 0;
@@ -862,9 +874,9 @@ void list_init() {
   for (i=0; i<lists[LIST_PERSONALITIES].num_items; i++) {
     lists[LIST_PERSONALITIES].items[i] = droid_personalities[i].name;
   }
-  lists[LIST_PERSONALITIES].render_options.text_size              = MENU_SELECT_TEXT_SIZE;
+  lists[LIST_PERSONALITIES].render_options.text_size              = BEACON_MENU_SELECT_TEXT_SIZE;
   lists[LIST_PERSONALITIES].render_options.text_color             = MENU_SELECT_TEXT_COLOR;
-  lists[LIST_PERSONALITIES].render_options.text_padding           = MENU_SELECT_TEXT_PADDING;
+  lists[LIST_PERSONALITIES].render_options.text_padding           = BEACON_MENU_SELECT_TEXT_PADDING;
   lists[LIST_PERSONALITIES].render_options.selected_text_color    = MENU_SELECT_SELECTED_TEXT_COLOR;
   lists[LIST_PERSONALITIES].render_options.selected_border_color  = MENU_SELECT_SELECTED_BORDER_COLOR;
   lists[LIST_PERSONALITIES].render_options.ofr_font_size          = 0;
@@ -918,6 +930,11 @@ uint16_t dtb_get_text_width(const char* msg) {
 void list_calculate_dynamic_font_properties() {
   uint8_t curr_list, curr_item, num_items;
   uint16_t font_height = 0, ofs_tmp;
+
+  #ifdef USE_OFR_FONTS
+    SERIAL_PRINT("dtb_font = ");
+    SERIAL_PRINTLN(dtb_font);
+  #endif
 
   // loop through all lists
   for (curr_list=0; curr_list<NUM_LISTS; curr_list++) {
@@ -1632,9 +1649,13 @@ void display_list(uint8_t list_index) {
   // get the pixel height of the font
   #ifdef USE_OFR_FONTS
     if (dtb_font != 0) {
+      SERIAL_PRINT("ofr_font_size: ");
+      SERIAL_PRINTLN(lists[list_index].render_options.ofr_font_size);
       font_height = lists[list_index].render_options.ofr_font_height; //lists[list_index].render_options.ofr_font_size;
     } else {
   #endif
+      SERIAL_PRINT("text_size: ");
+      SERIAL_PRINTLN(lists[list_index].render_options.text_size);
       tft.setTextSize(lists[list_index].render_options.text_size);
       font_height = tft.fontHeight();
   #ifdef USE_OFR_FONTS
@@ -3070,6 +3091,9 @@ void button_handler() {
 void setup() {
   uint8_t i;
 
+  // init serial
+  SERIAL_BEGIN(115200);
+
   // T-Display-S3 needs this in order to run off battery
   #ifdef TDISPLAYS3
     pinMode(15, OUTPUT);
@@ -3158,8 +3182,7 @@ void setup() {
     dtb_load_font();
   #endif
 
-  // init serial debug messaging
-  SERIAL_BEGIN(115200);
+  // end of setup
   SERIAL_PRINTLN("Ready!");
 }
 
