@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.70 : ruthsarian@gmail.com
+/* Droid Toolbox v0.71 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * 
@@ -108,6 +108,7 @@
  *     add option, through defines, to rotate display 180 degrees so buttons are on the right
  *
  * HISTORY
+ *   v0.71 : Fix heap corruption with BLE scan advertisement when building with arduino-esp32 core >= 2.0.15
  *   v0.70 : Fixed beacon menu font size issues with TTGO T-Display
  *           thanks to Knucklebuster620 for bringing this issue to my attention
  *   v0.69 : The Wayfinder Version 
@@ -204,7 +205,7 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.70"                 // the version displayed on the splash screen at the lower right; β
+#define MSG_VERSION                         "v0.71"                 // the version displayed on the splash screen at the lower right; β
 
 #define DEFAULT_TEXT_SIZE                   2                       // a generic size used throughout 
 #define DEFAULT_TEXT_COLOR                  TFT_DARKGREY            // e.g. 'turn off your droid remote'
@@ -3129,6 +3130,7 @@ void setup() {
 
   // setup BLE advertising (beacon)
   pAdvertising = BLEDevice::getAdvertising();
+  oScanResponseData.setName(ble_adv_name);
   pAdvertising->setScanResponseData(oScanResponseData);
 
   // define deep sleep wakeup trigger; if commented out ESP32 goes into hibernation instead of deep sleep and only wakes up with the reset button
