@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.71 : ruthsarian@gmail.com
+/* Droid Toolbox v0.72 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * 
@@ -66,7 +66,7 @@
  *   Upload Speed: 921600
  *   CPU Freq: 240MHz (WiFI/BT)
  *   Flash Mode: QIO 80MHz
- *   Flash Size: 16MB (128Mb)
+ *   Flash Size: 16MB (128Mb)o
  *   Partition Scheme: Huge App (3MB No OTA/1MB SPIFFS)
  *   Core Debug Level: None
  *   PSRAM: OPI PSRAM 
@@ -108,6 +108,7 @@
  *     add option, through defines, to rotate display 180 degrees so buttons are on the right
  *
  * HISTORY
+ *   v0.72 : Fix compatibility with recently released ESP32 3.0 core
  *   v0.71 : Fix heap corruption with BLE scan advertisement when building with arduino-esp32 core >= 2.0.15
  *   v0.70 : Fixed beacon menu font size issues with TTGO T-Display
  *           thanks to Knucklebuster620 for bringing this issue to my attention
@@ -186,6 +187,10 @@
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
 
+#if (ESP_ARDUINO_VERSION_MAJOR >= 3) && defined(_TFT_eSPI_ESP32H_) && !defined(GPIO_PIN_COUNT)
+    #error Please downgrade your ESP32 core to 2.0 or add #include "driver/gpio.h" to TFT_eSPI_ESP32.h and TFT_eSPI_ESP32_S3.h in the TFT_eSPI library.
+#endif
+
 #ifdef USE_OFR_FONTS            // load OpenFontRenderer and some fonts from https://aurekfonts.github.io/
   #include "OpenFontRender.h"
   #include "Aurebesh-English.h"
@@ -205,7 +210,7 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.71"                 // the version displayed on the splash screen at the lower right; β
+#define MSG_VERSION                         "v0.72"                 // the version displayed on the splash screen at the lower right; β
 
 #define DEFAULT_TEXT_SIZE                   2                       // a generic size used throughout 
 #define DEFAULT_TEXT_COLOR                  TFT_DARKGREY            // e.g. 'turn off your droid remote'
@@ -1383,7 +1388,20 @@ void set_payload_from_beacon() {
   }
 
   // load the payload into the advertisement data
-  pAdvertisementData->setManufacturerData(std::string(reinterpret_cast<char*>(payload), PAYLOAD_SIZE));
+
+  // workaround ESP32 3.x core incompatibilities with 2.x
+  #if ESP_ARDUINO_VERSION_MAJOR >= 3
+    // new code
+    String payload_wstr;
+    for(uint8_t i=0;i<PAYLOAD_SIZE;i++) {
+      payload_wstr += (char)payload[i];
+    }
+    pAdvertisementData->setManufacturerData(payload_wstr);
+  #else
+    // old code
+    pAdvertisementData->setManufacturerData(std::string(reinterpret_cast<char*>(payload), PAYLOAD_SIZE));
+  #endif
+
   pAdvertising->setAdvertisementData(*pAdvertisementData);
 
   // prevent connection attempts while advertising a beacon
@@ -1396,6 +1414,7 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
   void onResult(BLEAdvertisedDevice advertisedDevice) {
     uint8_t *rawdata, rawdata_len, i, pos;
     uint16_t mfid;
+    char msg[MSG_LEN_MAX];
 
     // do not add this object if it doesn't have the name DROID or if it does not have manufacturer data
     if (advertisedDevice.getName() != "DROID" || !advertisedDevice.haveManufacturerData()) {
@@ -1403,9 +1422,40 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
     }
 
     // exract manufacturer's id from device's manufacturer data
-    rawdata = (uint8_t*)advertisedDevice.getManufacturerData().data();
+
+    // workaround ESP32 3.x core incompatibilities with 2.x
+    #if ESP_ARDUINO_VERSION_MAJOR >= 3
+      // new code
+      unsigned char rawdata_buf[PAYLOAD_SIZE+1];  // the +1 is a hack; the returned data will include an end-of-string character, so +1 the buffer size for that
+      advertisedDevice.getManufacturerData().getBytes(rawdata_buf, PAYLOAD_SIZE+1);
+      rawdata = (uint8_t *)&rawdata_buf[0];
+    #else
+      // old code
+      rawdata = (uint8_t*)advertisedDevice.getManufacturerData().data();
+    #endif
+
     rawdata_len = advertisedDevice.getManufacturerData().length();
     mfid = rawdata[0] + (rawdata[1] << 8);
+
+    SERIAL_PRINTLN("*");
+    SERIAL_PRINTLN("*");
+    SERIAL_PRINTLN("*");
+
+    SERIAL_PRINT("rawdata_len: ");
+    SERIAL_PRINTLN(rawdata_len);
+
+    SERIAL_PRINT("data: ");
+    for(i=0;i<rawdata_len;i++) {
+      SERIAL_PRINT(" ");
+      SERIAL_PRINT2(rawdata[i], HEX);
+    }
+    SERIAL_PRINTLN("");
+
+    SERIAL_PRINTLN("*");
+    SERIAL_PRINTLN("*");
+    SERIAL_PRINTLN("*");
+
+    delay(500);
 
     // do not add this device if it does not have a manufacturer's id of 0x0183 (Disney)
     if (rawdata_len != 8 || mfid != 0x0183) {
@@ -1439,6 +1489,12 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
         }
       }
     }
+
+    SERIAL_PRINT("chipid: ");
+    SERIAL_PRINTLN2(rawdata[rawdata_len - 1], HEX);
+
+    SERIAL_PRINT("affid: ");
+    SERIAL_PRINTLN2((rawdata[rawdata_len - 2] - 0x80) / 2, HEX);
 
     // store found droid's information
     droids[pos].chipid = rawdata[rawdata_len - 1];
@@ -1623,11 +1679,21 @@ void ble_scan() {
   // get ready to count some droids
   droid_count = 0;
 
-  // BLE scan
-  BLEScanResults foundDevices = pBLEScan->start(BLE_SCAN_TIME, false);
+  // workaround ESP32 3.x core incompatibilities with 2.x
+  #if ESP_ARDUINO_VERSION_MAJOR >= 3
+    // BLE scan
+    BLEScanResults *foundDevices = pBLEScan->start(BLE_SCAN_TIME, false);
 
-  // Report results via Serial
-  SERIAL_PRINT(foundDevices.getCount());
+    // Report results via Serial
+    SERIAL_PRINT(foundDevices->getCount());
+  #else
+    // BLE scan
+    BLEScanResults foundDevices = pBLEScan->start(BLE_SCAN_TIME, false);
+
+    // Report results via Serial
+    SERIAL_PRINT(foundDevices.getCount());
+  #endif
+
   SERIAL_PRINTLN(" BLE devices seen.");
 
   // delete results fromBLEScan buffer to release memory
