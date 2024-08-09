@@ -162,6 +162,24 @@ Droid Toolbox allows you to select between the 12 groups and select an audio tra
 
 *\*\* Seen at the entrance to [Oga's Cantina](https://disneyworld.disney.go.com/dining/hollywood-studios/ogas-cantina/); possibly the droid detectors? Also seen near Ronto Roasters and the area between Droid Depot and First Order.*
 
+## Troubleshooting 
+Some tips to help troubleshoot issues with uploading this sketch to your T-Display or T-Display-S3
+
+### Screen is blank or the orientation is off (rotated 90 degrees)
+Only one #include should be uncommented in user_setup_select.h. You probably have either the wrong device uncommented or you have the correct device, but left the top include, #include <User_Setup.h>, uncommented as well. That should be commented out.
+
+### Upload gets stuck (at 67% percent)
+Remove the battery (if you have one) from the T-Display. Unplug it from your computer. Hold the T-Display so the buttons are on the left side of the screen. While holding the top-left button down, plug the T-Display back in to your computer. Recompile and upload the sketch.
+
+### Top-left button doesn't work
+This happens if your T-Display is connected via USB to your computer and the serial port to the T-Display is open (via Arduino IDE's serial monitor usually, or maybe something else?) Either change the port in your Arduino IDE or close the IDE completely (and anything else that may be making a serial connection to the t-display) then try again.
+
+### Compilation Error: TFT_eSPI, gpio_input_get()
+Check user_setup_select.h and make sure only 1 include is uncommented and it is the correct device that you're currently working with.
+
+### Compilation Error: Sketch too big; text section exceeds available space in board
+Your partition scheme setting needs to be changed to allow for the large application. Go into the tools menu and under partition scheme select "Huge APP".
+
 ## References
 * [Controlling Disney’s Droids from Droid Depot with WebBluetooth](https://medium.com/@baptistelaget/controlling-disneys-droids-from-droid-depots-with-webbluetooth-febbabe50587)
 * [bashNinja's BLE scan from Galaxy's Edge](https://discord.com/channels/478345594641973248/596058282087546968/626179189115977748) shared with the #makerspace channel of the [Galaxy's Edge Discord Server](http://swgediscord.com)
