@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.72 : ruthsarian@gmail.com
+/* Droid Toolbox v0.73 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * 
@@ -108,8 +108,12 @@
  *     add option, through defines, to rotate display 180 degrees so buttons are on the right
  *
  * HISTORY
+ *   v0.73 : Added Drum Kit and A-LT personalities.
+ *           thanks to Nick T for providing the beacon data of the A-LT droid.
  *   v0.72 : Fix compatibility with recently released ESP32 3.0 core
+ *           thanks to Richs1077 and Elcid8687 for bringing this issue to my attention
  *   v0.71 : Fix heap corruption with BLE scan advertisement when building with arduino-esp32 core >= 2.0.15
+ *           thanks to dtshepherd for identifying this issue and developing the fix.
  *   v0.70 : Fixed beacon menu font size issues with TTGO T-Display
  *           thanks to Knucklebuster620 for bringing this issue to my attention
  *   v0.69 : The Wayfinder Version 
@@ -210,7 +214,7 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.72"                 // the version displayed on the splash screen at the lower right; β
+#define MSG_VERSION                         "v0.73"                 // the version displayed on the splash screen at the lower right; β
 
 #define DEFAULT_TEXT_SIZE                   2                       // a generic size used throughout 
 #define DEFAULT_TEXT_COLOR                  TFT_DARKGREY            // e.g. 'turn off your droid remote'
@@ -371,21 +375,23 @@ typedef struct {
 //   - because the programmer created this 'feature' for another reason, then rewrote the code making the 'feature' useless
 //
 personality_t droid_personalities[] = {
-//  ID,   NAME,       AFF,  E
-  { 0x01, "R Unit",   0x01, 1},
-  { 0x02, "BB Unit",  0x01, 1},
-  { 0x03, "Blue",     0x05, 1},
-  { 0x04, "Gray",     0x01, 1},
-  { 0x05, "Red",      0x09, 1},
-  { 0x06, "Orange",   0x05, 1},
-  { 0x07, "Purple",   0x01, 1},
-  { 0x08, "Black",    0x09, 1},
-  { 0x09, "CB-23",    0x01, 1},
-  { 0x0A, "Yellow",   0x05, 1},
-  { 0x0B, "C1-10P",   0x05, 1},
-  { 0x0C, "D-O",      0x05, 1},
-  { 0x0D, "Blue 2",   0x01, 1},
-  { 0x0E, "BD Unit",  0x05, 1},
+//  ID,   NAME,         AFF,  E
+  { 0x01, "R Unit",     0x01, 1},
+  { 0x02, "BB Unit",    0x01, 1},
+  { 0x03, "Blue",       0x05, 1},
+  { 0x04, "Gray",       0x01, 1},
+  { 0x05, "Red",        0x09, 1},
+  { 0x06, "Orange",     0x05, 1},
+  { 0x07, "Purple",     0x01, 1},
+  { 0x08, "Black",      0x09, 1},
+  { 0x09, "CB-23",      0x01, 1},
+  { 0x0A, "Yellow",     0x05, 1},
+  { 0x0B, "C1-10P",     0x05, 1},
+  { 0x0C, "D-O",        0x05, 1},
+  { 0x0D, "Blue 2",     0x01, 1},
+  { 0x0E, "BD Unit",    0x05, 1},
+  { 0x0F, "A-LT Unit",  0x01, 1},
+  { 0x10, "Drum Kit",   0x01, 1},  
 };
 
 #define DROID_PERSONALITIES_SIZE sizeof(droid_personalities)/sizeof(personality_t)
