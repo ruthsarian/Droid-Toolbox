@@ -1,4 +1,4 @@
-# Droid Toolbox - v0.73
+# Droid Toolbox - v0.74
 This is an [Arduino IDE](https://www.arduino.cc/en/software) sketch for ESP32-based devices to interact with [Galaxy's Edge droids](https://disneyworld.disney.go.com/shops/hollywood-studios/droid-depot/). It can emit a bluetooth beacon that droids will react to, scan for nearby droids, and connect to droids and command them to play specific audio tracks from their personality chip. A YouTube video of the Droid Toolbox in action is available at https://www.youtube.com/watch?v=0sHTIEbTevk.
 
 This code was specifically designed for [LILYGO TTGO T-Display](https://www.lilygo.cc/products/lilygo%C2%AE-ttgo-t-display-1-14-inch-lcd-esp32-control-board) and [LILYGO T-Display-S3](https://www.lilygo.cc/products/t-display-s3) devices and may not display correctly on other ESP32 devices without modification.
@@ -40,6 +40,7 @@ This code was specifically designed for [LILYGO TTGO T-Display](https://www.lily
 * To change the font press and hold the button 1 for at least 1 second then release it.
 * The splash screen will refresh in the new font. 
 * Droid Toolbox comes with 4 variations on the Aurebesh font.
+* If you've previously connected to a droid (since your Droid Toolbox was last programmed), you can press and hold button 2 for at least 1 second then release it and it will try to connect to the droid you last connected to.
 
 ![Image of a TTGO with the menu screen showing SCANNER band BEACON options.](images/v0.54_02_top_menu.jpg)
 * Press either button 1 or 2 to enter the main menu.

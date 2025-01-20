@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.73 : ruthsarian@gmail.com
+/* Droid Toolbox v0.74 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * 
@@ -108,6 +108,10 @@
  *     add option, through defines, to rotate display 180 degrees so buttons are on the right
  *
  * HISTORY
+ *   v0.74 : When connecting to a droid, the droid's BLE address is saved to non-volatile memory. You can
+ *           then quick-connect to that droid in the future, through power-cycles of the toolbox, by holding 
+ *           button 2 for more than 1/2 second then releasing it while on the splash screen. This feature
+ *           was suggested by HighVoltage on the SWGE discord server.
  *   v0.73 : Added Drum Kit and A-LT personalities.
  *           thanks to Nick T for providing the beacon data of the A-LT droid.
  *   v0.72 : Fix compatibility with recently released ESP32 3.0 core
@@ -203,18 +207,18 @@
   #include "DroidobeshDepot-RegularModified.h"
   #include "TFGunray-Bold.h"
 #endif
-
-#if defined (USE_NVS) && defined (USE_OFR_FONTS)  // no point in enabling saving of font preferences if OFR_FONTS aren't being used
+ 
+#ifdef USE_NVS                                // if NVS is enabled, create a preferences object to store data to
   #include <Preferences.h>
-  #define PREF_APP_NAME     "droid-toolbox"       // the name should not be changed
-  Preferences preferences;                        // create a preferences object to store variables in non-volatile storage (NVS)
+  #define PREF_APP_NAME     "droid-toolbox"   // the name should not be changed
+  Preferences preferences;                    // create a preferences object to store variables in non-volatile storage (NVS)
 #endif
 
 #define C565(r,g,b)                         ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)    // macro to convert RGB values to TFT_eSPI color value
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.73"                 // the version displayed on the splash screen at the lower right; β
+#define MSG_VERSION                         "v0.74"                 // the version displayed on the splash screen at the lower right; β
 
 #define DEFAULT_TEXT_SIZE                   2                       // a generic size used throughout 
 #define DEFAULT_TEXT_COLOR                  TFT_DARKGREY            // e.g. 'turn off your droid remote'
@@ -1576,6 +1580,10 @@ void droid_disconnect() {
 }
 
 bool droid_connect() {
+  return droid_connect((const char *)nullptr);
+}
+
+bool droid_connect(const char *addr_to_connect) {
   uint8_t login_value[] = { 0x22, 0x20, 0x01 };
   uint8_t cmd_a[] = { 0x27, 0x42, 0x0f, 0x44, 0x44, 0x00, 0x1f, 0x07 };
   uint8_t cmd_b[] = { 0x27, 0x42, 0x0f, 0x44, 0x44, 0x00, 0x18, 0x00 };
@@ -1583,12 +1591,28 @@ bool droid_connect() {
   // end any current connection
   droid_disconnect();
 
-  // create a new connection
-  SERIAL_PRINT("Connecting to ");
-  SERIAL_PRINTLN(droids[current_droid].pAdvertisedDevice->getAddress().toString().c_str());
-  if (!pClient->connect(droids[current_droid].pAdvertisedDevice)) {
-    SERIAL_PRINTLN("Connection failed.");
-    return false;
+  // attempt to connect to the droid
+  if (addr_to_connect == nullptr) {
+    SERIAL_PRINT("Connecting to ");
+    SERIAL_PRINTLN(droids[current_droid].pAdvertisedDevice->getAddress().toString().c_str());
+     if (!pClient->connect(droids[current_droid].pAdvertisedDevice)) {
+      SERIAL_PRINTLN("Connection failed.");
+      return false;
+    }
+
+    // store this address to NVS
+    #ifdef USE_NVS
+      SERIAL_PRINTLN("Saving droid BLE address.");
+      preferences.putString("saved_addr", droids[current_droid].pAdvertisedDevice->getAddress().toString());
+    #endif
+  } else {
+    SERIAL_PRINT("Manually connecting to ");
+    SERIAL_PRINTLN(addr_to_connect);
+    BLEAddress connect_address(addr_to_connect);
+    if (!pClient->connect(connect_address, BLE_ADDR_TYPE_RANDOM)) {
+      SERIAL_PRINTLN("Connection failed.");
+      return false;
+    }
   }
 
   // locate the service we want to talk to
@@ -2879,6 +2903,11 @@ void button1(button_press_t press_type) {
 void button2(button_press_t press_type);  // trying to use an enum as a parameter triggers a bug in arduino. adding an explicit prototype resolves the issue.
 void button2(button_press_t press_type) {
 
+  // if NVS is enabled, create this variable that we'll use later on
+  #ifdef USE_NVS
+    static String saved_addr;
+  #endif
+
   uint8_t i;
 
   SERIAL_PRINTLN("Button 2 Press");
@@ -2887,13 +2916,55 @@ void button2(button_press_t press_type) {
   switch (state) {
     case SPLASH:
 
-      // before exiting the splash screen, store the current font to NVS
-      #if defined (USE_OFR_FONTS) && defined (USE_NVS)
-        preferences.putUChar("dtb_font", dtb_font);
+      // if we're using storage
+      #ifdef USE_NVS
+
+        // trigger a connection to a hard-coded address if there's a long button press on the splash screen
+        if (press_type == LONG_PRESS) {
+
+          saved_addr = preferences.getString("saved_addr", "");
+          if (saved_addr.length() == 17) {
+
+            // update the display to let them know we're attempting a connection
+            state = SCANNER_CONNECTING;
+            tft_update = true;
+            update_display();
+            delay(1000);
+
+            if (droid_connect(saved_addr.c_str())) {
+              state = SCANNER_CONNECTED;
+
+            // on a failed connection, display the failed connect message, then back to the splash screen
+            } else {
+              SERIAL_PRINTLN("Saved address connect has failed");
+              state = SCANNER_CONNECT_FAILED;
+              tft_update = true;
+              update_display();
+              delay(2000);
+              state = SPLASH;
+            }
+          } else {
+            SERIAL_PRINTLN("No saved address found.");
+            SERIAL_PRINT("saved_addr length is ");
+            SERIAL_PRINTLN(saved_addr.length());
+          }
+        } else {
+
       #endif
 
-      state = TOP_MENU;
-      selected_item = 0;
+        // before exiting the splash screen, store the current font to NVS
+        #if defined (USE_OFR_FONTS) && defined (USE_NVS)
+          preferences.putUChar("dtb_font", dtb_font);
+        #endif
+
+        state = TOP_MENU;
+        selected_item = 0;
+
+      // close out the if/else block if we're using storage
+      #ifdef USE_NVS
+        }
+      #endif
+
       tft_update = true;
       break;
 
@@ -3070,7 +3141,21 @@ void button2(button_press_t press_type) {
         }
       } else {
         droid_disconnect();
-        state = SCANNER_RESULTS;
+
+        // if save_addr is empty then a back operation from the menu should go to scanner results
+        #ifdef USE_NVS
+          if (saved_addr.isEmpty()) {
+        #endif
+
+          state = SCANNER_RESULTS;
+
+        // else we know we got here from a quick connect from the splash screen and should return to it
+        #ifdef USE_NVS
+          } else {
+            saved_addr.clear();
+            state = SPLASH;
+          }
+        #endif
       }
       tft_update = true;
       break;
@@ -3167,6 +3252,16 @@ void setup() {
   // init serial
   SERIAL_BEGIN(115200);
 
+
+  SERIAL_PRINT("BLE_ADDR_TYPE_PUBLIC = ");
+  SERIAL_PRINTLN((uint8_t)BLE_ADDR_TYPE_PUBLIC);
+  SERIAL_PRINT("BLE_ADDR_TYPE_RANDOM = ");
+  SERIAL_PRINTLN((uint8_t)BLE_ADDR_TYPE_RANDOM);
+  SERIAL_PRINT("BLE_ADDR_TYPE_RPA_PUBLIC = ");
+  SERIAL_PRINTLN((uint8_t)BLE_ADDR_TYPE_RPA_PUBLIC);
+  SERIAL_PRINT("BLE_ADDR_TYPE_RPA_RANDOM = ");
+  SERIAL_PRINTLN((uint8_t)BLE_ADDR_TYPE_RPA_RANDOM);
+
   // T-Display-S3 needs this in order to run off battery
   #ifdef TDISPLAYS3
     pinMode(15, OUTPUT);
@@ -3247,13 +3342,15 @@ void setup() {
   list_calculate_dynamic_font_properties();
 
   // initialize NVS
-  #if defined (USE_NVS) && defined (USE_OFR_FONTS)
+  #ifdef USE_NVS
     preferences.begin(PREF_APP_NAME, false); 
     //preferences.clear();
 
     // load stored font
-    dtb_font = (uint8_t)preferences.getUChar("dtb_font", 0);
-    dtb_load_font();
+    #ifdef USE_OFR_FONTS
+      dtb_font = (uint8_t)preferences.getUChar("dtb_font", 0);
+      dtb_load_font();
+    #endif
   #endif
 
   // end of setup
