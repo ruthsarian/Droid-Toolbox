@@ -1,4 +1,4 @@
-# Droid Toolbox - v0.75
+# Droid Toolbox - v0.76
 This is an [Arduino IDE](https://www.arduino.cc/en/software) sketch for ESP32-based devices to interact with [Galaxy's Edge droids](https://disneyworld.disney.go.com/shops/hollywood-studios/droid-depot/). It can emit a bluetooth beacon that droids will react to, scan for nearby droids, and connect to droids and command them to play specific audio tracks from their personality chip. A YouTube video of the Droid Toolbox in action is available at https://www.youtube.com/watch?v=0sHTIEbTevk.
 
 This code was specifically designed for [LILYGO T-Display](https://www.lilygo.cc/products/lilygo%C2%AE-ttgo-t-display-1-14-inch-lcd-esp32-control-board) and [LILYGO T-Display-S3](https://www.lilygo.cc/products/t-display-s3) devices and may not display correctly on other ESP32 devices without modification.
@@ -57,7 +57,7 @@ This code was specifically designed for [LILYGO T-Display](https://www.lilygo.cc
 
 ### Single Button Mode
 * Devices with a single button can use that single button to generate both button 1 and button 2 presses
-* To enable this feature define `SINGLE_BUTTON_MODE` in the source code. *NOTE:* LilyGo AMOLED devices do NOT need to perform this step.
+* To enable this feature define `SINGLE_BUTTON_MODE` in the source code.
 * A single button press will be treated as a button 1 press.
 * A double-click will be treated as a button 2 press.
 * If the second press of the double-click is held down for more than 500ms it will be treated as a long button press.

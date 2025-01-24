@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.75 : ruthsarian@gmail.com
+/* Droid Toolbox v0.76 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * 
@@ -123,6 +123,9 @@
  *     add option, through defines, to rotate display 180 degrees so buttons are on the right
  *
  * HISTORY
+ *   v0.76 : Rolled back the automatic button detection for AMOLED devices because V1 basics, which have 2 buttons, are
+ *           being detected as only having 1 button. You'll have to manually set the IO pins for the buttons like everyone else.
+ *           Thanks to Chrisedge for identifying this issue.
  *   v0.75 : Added support for LilyGo T-Display AMOLED devices, although touch functionality is not used at this time.
  *           If using a LilyGo T-Display AMOLED device you need to have Setup206_LilyGo_T_Display_S3 uncommented in user_setup_select.h for TFT_eSPI library.
  *           Added option to have BUTTON1 behave as both BUTTON1 and BUTTON2 for those people whose device only has one button.
@@ -205,7 +208,7 @@
 #define USE_OFR_FONTS         // uncomment to use openFontRenderer (see notes above on how to install this library)
 #define USE_NVS               // uncomment to enable use of non-volatile storage (NVS) to save preferences (last font used);
 //#define LILYGO_AMOLED         // uncomment if you're using a LilyGo T-Display AMOLED device
-//#define SINGLE_BUTTON_MODE    // uncomment to use a single button (BUTTON1) for both button 1 and button 2; not necessary for LilyGo AMOLED devices
+//#define SINGLE_BUTTON_MODE    // uncomment to use a single button (BUTTON1) for both button 1 and button 2; most AMOLED devices will need this
 //#define SERIAL_DEBUG_ENABLE   // uncomment to enable serial debug/monitor messages
                               // if using serial debug, you may need to select HUGE APP from the partition scheme option under tools menu
 
@@ -242,7 +245,7 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.75"                 // the version displayed on the splash screen at the lower right; β
+#define MSG_VERSION                         "v0.76"                 // the version displayed on the splash screen at the lower right; β
 
 #ifdef LILYGO_AMOLED
   #define DEFAULT_TEXT_SIZE                 3
@@ -606,7 +609,7 @@ beacon_t beacon;
 
 #define BUTTON1_PIN       0   // button 1 on the TTGO T-Display and T-Display-S3 is GPIO 0
 #if defined(LILYGO_AMOLED)
-  #define BUTTON2_PIN     -1  // button pin values for LilyGo                                                                                            AMOLED devices will be determined automatically
+  #define BUTTON2_PIN     -1  // button 2 on the LilyGo AMOLED; if you have a version 1 AMOLED basic change this to 21
   #define BAT_ADC_PIN     4   // battery monitor pin
 #elif defined(TDISPLAYS3)
   #define BUTTON2_PIN     14  // button 2 on the T-Display-S3 is GPIO14
@@ -3441,20 +3444,22 @@ void setup() {
     ofr.setDrawer(tft);  
   #endif
 
-  // setup buttons as input
-  //
-  // LilyGo AMOLED pin numbers can be pulled from the amoled object
+  // while lilygo's amoled object will tell me how many buttons there are,
+  // it doesn't detect v1 basic AMOLED devices which have 2 buttons; so this
+  // code is useless :(
+  /*
   #ifdef LILYGO_AMOLED
     const BoardsConfigure_t *bc = amoled.getBoardsConfigure();
     button_pins[0] = (int8_t)(bc->buttonNum > 0 ? bc->pButtons[0] : -1);
     button_pins[1] = (int8_t)(bc->buttonNum > 1 ? bc->pButtons[1] : -1);
   #endif
-  //
-  // if both pin numbers are the same, disable button 2
+  */
+
+  // don't try to use two buttons as the same button
   if (button_pins[0] == button_pins[1] && button_pins[0] >= 0) {
     button_pins[1] = -1;
   }
-  //
+
   // set button pins as input
   if (button_pins[0] >= 0) {
     pinMode(button_pins[0], INPUT);
