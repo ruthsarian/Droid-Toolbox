@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.74 : ruthsarian@gmail.com
+/* Droid Toolbox v0.75 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * 
@@ -66,18 +66,33 @@
  *   Upload Speed: 921600
  *   CPU Freq: 240MHz (WiFI/BT)
  *   Flash Mode: QIO 80MHz
- *   Flash Size: 16MB (128Mb)o
+ *   Flash Size: 16MB (128Mb)
  *   Partition Scheme: Huge App (3MB No OTA/1MB SPIFFS)
  *   Core Debug Level: None
  *   PSRAM: OPI PSRAM 
  *   USB CDC On Boot: Enabled
  *   JTAG Adapter: Integrated USB JTAG
  *   USB Mode: Hardware CDC and JTAG
- *   
+ * 
+ * T-Display-S3 AMOLED (Basic V1, Basic V2, Touch)
+ *   Board: ESP32S3 Dev Module
+ *   CPU Freq: 240MHz (WiFI/BT)
+ *   Flash Mode: QIO 80MHz
+ *   Flash Size: 16MB (128Mb)
+ *   Partition Scheme: 16M Flash(3M APP/9.9MB FATFS)
+ *   Core Debug Level: None
+ *   PSRAM: OPI PSRAM 
+ *   USB CDC On Boot: Enabled
+ *   JTAG Adapter: Integrated USB JTAG
+ *   USB Mode: Hardware CDC and JTAG
+ *   Upload Mode: UART0/Hardware CDC
+ * 
  * References
  *   Arduino IDE setup: https://www.youtube.com/watch?v=b8254--ibmM
  *   TTGO T-Display Github Repository: https://github.com/Xinyuan-LilyGO/TTGO-T-Display
  *   T-Display-S3 Github Repository: https://github.com/Xinyuan-LilyGO/T-Display-S3
+ *   T-Display-S3 AMOLED Github Repository: https://github.com/Xinyuan-LilyGO/T-Display-S3-AMOLED
+ *   LilyGo AMOLED Series Github Repository: https://github.com/Xinyuan-LilyGO/LilyGo-AMOLED-Series
  *   
  *   Misc:
  *     https://github.com/Bodmer/TFT_eSPI/blob/master/TFT_eSPI.h
@@ -108,6 +123,10 @@
  *     add option, through defines, to rotate display 180 degrees so buttons are on the right
  *
  * HISTORY
+ *   v0.75 : Added support for LilyGo T-Display AMOLED devices, although touch functionality is not used at this time.
+ *           If using a LilyGo T-Display AMOLED device you need to have Setup206_LilyGo_T_Display_S3 uncommented in user_setup_select.h for TFT_eSPI library.
+ *           Added option to have BUTTON1 behave as both BUTTON1 and BUTTON2 for those people whose device only has one button.
+ *           To enable this feature, uncommon SINGLE_BUTTON_MODE below.
  *   v0.74 : When connecting to a droid, the droid's BLE address is saved to non-volatile memory. You can
  *           then quick-connect to that droid in the future, through power-cycles of the toolbox, by holding 
  *           button 2 for more than 1/2 second then releasing it while on the splash screen. This feature
@@ -183,11 +202,16 @@
  *   v0.10 : Initial Release
  */
 
-#define USE_OFR_FONTS           // uncomment to use openFontRenderer (see notes above on how to install this library)
-#define USE_NVS                 // uncomment to enable use of non-volatile storage (NVS) to save preferences (last font used);
-//#define SERIAL_DEBUG_ENABLE     // uncomment to enable serial debug/monitor messages
-                                // if using seridal debug, you may need to select HUGE APP from the partition scheme option under tools menu
+#define USE_OFR_FONTS         // uncomment to use openFontRenderer (see notes above on how to install this library)
+#define USE_NVS               // uncomment to enable use of non-volatile storage (NVS) to save preferences (last font used);
+//#define LILYGO_AMOLED         // uncomment if you're using a LilyGo T-Display AMOLED device
+//#define SINGLE_BUTTON_MODE    // uncomment to use a single button (BUTTON1) for both button 1 and button 2; not necessary for LilyGo AMOLED devices
+//#define SERIAL_DEBUG_ENABLE   // uncomment to enable serial debug/monitor messages
+                              // if using serial debug, you may need to select HUGE APP from the partition scheme option under tools menu
 
+#ifdef LILYGO_AMOLED
+  #include <LilyGo_AMOLED.h>
+#endif
 #include <TFT_eSPI.h>
 #include <SPI.h>
 #include <BLEDevice.h>
@@ -218,11 +242,17 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.74"                 // the version displayed on the splash screen at the lower right; β
+#define MSG_VERSION                         "v0.75"                 // the version displayed on the splash screen at the lower right; β
 
-#define DEFAULT_TEXT_SIZE                   2                       // a generic size used throughout 
+#ifdef LILYGO_AMOLED
+  #define DEFAULT_TEXT_SIZE                 3
+  #define DEFAULT_TEXT_PADDING              15
+#else
+  #define DEFAULT_TEXT_SIZE                 2                       // a generic size used throughout 
+  #define DEFAULT_TEXT_PADDING              10                      // necessary? perhaps just use a formula throughout the code? e.g. (tft.fontHeight() / 3)
+#endif
+
 #define DEFAULT_TEXT_COLOR                  TFT_DARKGREY            // e.g. 'turn off your droid remote'
-#define DEFAULT_TEXT_PADDING                10                      // necessary? perhaps just use a formula throughout the code? e.g. (tft.fontHeight() / 3)
 #define DEFAULT_SELECTED_TEXT_COLOR         TFT_WHITE
 #define DEFAULT_SELECTED_BORDER_COLOR       TFT_YELLOW
 
@@ -241,7 +271,7 @@
 #define MENU_SELECT_SELECTED_TEXT_COLOR     TFT_GREEN
 #define MENU_SELECT_SELECTED_BORDER_COLOR   TFT_BLUE
 
-#define BEACON_MENU_SELECT_TEXT_PADDING     8                       // beacon menus use MENU_SELECT_* values except for these two
+#define BEACON_MENU_SELECT_TEXT_PADDING     (DEFAULT_TEXT_PADDING - 2)  // beacon menus use MENU_SELECT_* values except for these two
 #define BEACON_MENU_SELECT_TEXT_SIZE        (DEFAULT_TEXT_SIZE + 1)
 
 #define BEACON_INTERVAL_TITLE_TEXT_SIZE     DEFAULT_TEXT_SIZE
@@ -270,7 +300,7 @@
 #define BEACON_EXPERT_VALUE_COLOR           TFT_BROWN
 #define BEACON_EXPERT_VALUE_SELECTED_COLOR  TFT_YELLOW
 
-#define ACTION_TEXT_SIZE                    (DEFAULT_TEXT_SIZE*2)
+#define ACTION_TEXT_SIZE                    (DEFAULT_TEXT_SIZE * 2)
 #define ACTION_TEXT_COLOR                   TFT_ORANGE            // e.g. 'CONNECTING'
 #define ACTION_RESULT_OK_TEXT_COLOR         TFT_GREEN             // e.g. 'CONNECTED'
 #define ACTION_RESULT_NG_TEXT_COLOR         TFT_RED               // e.g. 'CONNECT FAILED'
@@ -569,12 +599,16 @@ typedef struct {
 } beacon_t;
 beacon_t beacon;
 
-#if (defined(ARDUINO_ESP32S3_DEV) || defined(ARDUINO_LILYGO_T_DISPLAY_S3))  // this is assuming you're compiling for T-Display-S3 using the "ESP32S3 Dev Module" or "LilyGo T-Display-S3" board.
+// this is assuming you're compiling for T-Display-S3 using the "ESP32S3 Dev Module" or "LilyGo T-Display-S3" board.
+#if (defined(ARDUINO_ESP32S3_DEV) || defined(ARDUINO_LILYGO_T_DISPLAY_S3))
   #define TDISPLAYS3
 #endif
 
 #define BUTTON1_PIN       0   // button 1 on the TTGO T-Display and T-Display-S3 is GPIO 0
-#ifdef TDISPLAYS3          
+#if defined(LILYGO_AMOLED)
+  #define BUTTON2_PIN     -1  // button pin values for LilyGo                                                                                            AMOLED devices will be determined automatically
+  #define BAT_ADC_PIN     4   // battery monitor pin
+#elif defined(TDISPLAYS3)
   #define BUTTON2_PIN     14  // button 2 on the T-Display-S3 is GPIO14
   #define BAT_ADC_PIN     4   // battery monitor pin
 #else
@@ -585,6 +619,7 @@ beacon_t beacon;
 
 #define LAZY_DEBOUNCE     10  // time to wait after a button press before considering it a good press
 #define SHORT_PRESS_TIME  500 // maximum time, in milliseconds, that a button can be held before release and be considered a SHORT press
+#define SINGLE_BTN_GRACE  250 // how long after a button press to wait for the next one in single button mode
 
 #define MAX_DROIDS        20  // maximum number of droids to report on
 #define BLE_SCAN_TIME     5   // how many seconds to scan
@@ -593,7 +628,11 @@ beacon_t beacon;
 #define MSG_LEN_MAX       32
 #define DROID_ADDR_LEN    20
 
-#define WAKEUP_BUTTON     GPIO_NUM_0  // wake up when button 1 is pressed _ONLY_IF_ it's been enabled in setup(); otherwise the reset button will wake up the TTGO
+#if defined(ARDUINO_ESP32_DEV)
+#define WAKEUP_BUTTON     BUTTON2_PIN // wake up when button 2 is pressed. this is for T-Displays as they lack an external pullup resistor on button 1
+#else
+#define WAKEUP_BUTTON     BUTTON1_PIN // wake up when button 1 is pressed.
+#endif
 #define WAKEUP_LEVEL      LOW         // wake up from sleep when the button is pressed (LOW)
 
 // Using these macros to print debug messages will make it easier to disable the printing of those messages by undefining SERIAL_DEBUG_ENABLE
@@ -614,8 +653,6 @@ beacon_t beacon;
 const BLEUUID serviceUUID("09b600a0-3e42-41fc-b474-e9c0c8f0c801");
 const BLEUUID cmdUUID("09b600b1-3e42-41fc-b474-e9c0c8f0c801");
 const BLEUUID notifyUUID("09b600b0-3e42-41fc-b474-e9c0c8f0c801");  // not used, but keeping it for future reference
-
-uint32_t last_activity;
 
 BLEScan* pBLEScan = nullptr;
 BLEClient* pClient = nullptr;
@@ -789,10 +826,20 @@ list_t lists[NUM_LISTS];
  uint8_t beacon_rotate_interval = 6;  // this value, multiplied by 10, defines the number of seconds before the current beacon changes; when set to 0 the beacon rotation feature is disabled
 uint32_t next_beacon_time = 0;        // the time, in ms, when the next beacon change will occur
 
-TFT_eSPI tft = TFT_eSPI();      // display interface
-bool tft_update = true;         // flag to indicate display needs to be updated
+// TFT_eSPI requires special setup with LilyGo AMOLED devices
+#ifdef LILYGO_AMOLED
+  TFT_eSPI tft_object = TFT_eSPI();
+  TFT_eSprite tft = TFT_eSprite(&tft_object);
+  LilyGo_Class amoled;
+#else
+  TFT_eSPI tft = TFT_eSPI();    // TFT_eSPI display interface
+#endif
 
+bool tft_update = true;         // flag to indicate display needs to be updated
 system_state_t state = SPLASH;  // track the current state of the toolbox
+uint32_t last_activity;         // keep track of the last time the user did something; used for setting the device to sleep
+
+int8_t button_pins[] = {BUTTON1_PIN, BUTTON2_PIN};  // make the IO pins for buttons variables so we can change them in setup()
 
 //
 // rendering lists is done with an array of strings (the items in the list)
@@ -1735,6 +1782,11 @@ void reset_screen(void) {
   tft.fillScreen(TFT_BLACK);
   tft.setTextDatum(TL_DATUM);
   tft.setCursor(0, 0);
+
+  #ifdef LILYGO_AMOLED
+    tft.fillRect(0, 0, amoled.width(), amoled.height(), TFT_BLACK);
+    amoled.pushColors(0, 0, amoled.width(), amoled.height(), (uint16_t *)tft.getPointer());
+  #endif
 }
 
 //void display_list(const char **items, uint8_t num_items) {
@@ -2567,6 +2619,10 @@ void update_display() {
       break;
   }
 
+  #ifdef LILYGO_AMOLED
+    amoled.pushColors(0, 0, amoled.width(), amoled.height(), (uint16_t *)tft.getPointer());
+  #endif
+
   tft_update = false;
 }
 
@@ -3206,15 +3262,12 @@ void button2(button_press_t press_type) {
   }
 }
 
-void button_handler() {
+void button1_handler() {
   static uint32_t last_btn1_time = 0;
   static uint8_t last_btn1_state = HIGH;
-  static uint32_t last_btn2_time = 0;
-  static uint8_t last_btn2_state = HIGH;
 
   // gather current state of things
-  uint8_t now_btn1_state = digitalRead(BUTTON1_PIN);
-  uint8_t now_btn2_state = digitalRead(BUTTON2_PIN);
+  uint8_t now_btn1_state = digitalRead(button_pins[0]);
   uint32_t now_time = millis();
 
   if (now_btn1_state != last_btn1_state && now_time - last_btn1_time > LAZY_DEBOUNCE) {
@@ -3227,9 +3280,17 @@ void button_handler() {
     }
     last_btn1_state = now_btn1_state;
     last_btn1_time = now_time;
-
     last_activity = millis();
   }
+}
+
+void button2_handler() {
+  static uint32_t last_btn2_time = 0;
+  static uint8_t last_btn2_state = HIGH;
+
+  // gather current state of things
+  uint8_t now_btn2_state = digitalRead(button_pins[1]);
+  uint32_t now_time = millis();
 
   if (now_btn2_state != last_btn2_state && now_time - last_btn2_time > LAZY_DEBOUNCE) {
     if (now_btn2_state == HIGH) {
@@ -3241,9 +3302,101 @@ void button_handler() {
     }
     last_btn2_state = now_btn2_state;
     last_btn2_time = now_time;
-
     last_activity = millis();
   }
+}
+
+void button1_single_handler() {
+  static uint32_t last_btn1_time = 0;
+  static uint8_t last_btn1_state = HIGH;
+
+  static uint8_t btn1_press_cnt = 0;
+  static uint32_t btn1_grace_end = 0;
+  static uint8_t btn1_long_press = 0;
+
+  // gather current state of things
+  uint8_t now_btn1_state = digitalRead(button_pins[0]);
+  uint32_t now_time = millis();
+
+  if (now_btn1_state != last_btn1_state && now_time - last_btn1_time > LAZY_DEBOUNCE) {
+
+    // button is released
+    if (now_btn1_state == HIGH) {
+      //SERIAL_PRINTLN("BUTTON UP");
+
+      // record if it was a short or long button press, we'll need this later on
+      if (now_time - last_btn1_time > SHORT_PRESS_TIME) {
+        btn1_long_press = 1;
+      } else {
+        btn1_long_press = 0;
+      }
+
+      // increment press counter
+      btn1_press_cnt++;
+
+      // start a counter for how long we'll wait for the next button press before we evaluate the button press
+      btn1_grace_end = now_time + SINGLE_BTN_GRACE;
+
+    // button 1 has been pressed
+    } else {
+      //SERIAL_PRINTLN("BUTTON DOWN");
+
+      // stop grace counter when button is pressed
+      btn1_grace_end = 0;
+    }
+
+    last_btn1_state = now_btn1_state;
+    last_btn1_time = now_time;
+    last_activity = millis();
+
+  // button has been released for longer than the grace period, time to process the button press
+  } else if (now_btn1_state == HIGH && btn1_grace_end > 0 && btn1_grace_end <= now_time) {
+    //SERIAL_PRINT("RECORDED ");
+    //SERIAL_PRINT(btn1_press_cnt);
+    //SERIAL_PRINTLN(" BUTTON CLICKS");
+
+    // was it a long or a short button press?
+    if (btn1_long_press == 0) {
+      //SERIAL_PRINTLN("SHORT");
+
+      // is this a button 1 or a button 2 event?
+      if (btn1_press_cnt < 2) {
+        button1(SHORT_PRESS);
+      } else {
+        button2(SHORT_PRESS);
+      }
+    } else {
+      //SERIAL_PRINTLN("LONG");
+      if (btn1_press_cnt < 2) {
+        button1(LONG_PRESS);
+      } else {
+        button2(LONG_PRESS);
+      }
+    }
+
+    btn1_grace_end = 0;
+    btn1_press_cnt = 0;
+  }
+}
+
+void button_handler() {
+
+  // give people the option to opt-in to single button mode
+  #ifdef SINGLE_BUTTON_MODE
+  button1_single_handler();
+
+  // otherwise, determine if we have valid button pin values and determine
+  // which button handlers (if any) to use.
+  #else
+  if (button_pins[0] >= 0) {
+    if (button_pins[1] < 0) {
+      button1_single_handler();
+    } else {
+      button1_handler();
+      button2_handler();
+    }
+  }
+  #endif
 }
 
 void setup() {
@@ -3252,25 +3405,35 @@ void setup() {
   // init serial
   SERIAL_BEGIN(115200);
 
-
-  SERIAL_PRINT("BLE_ADDR_TYPE_PUBLIC = ");
-  SERIAL_PRINTLN((uint8_t)BLE_ADDR_TYPE_PUBLIC);
-  SERIAL_PRINT("BLE_ADDR_TYPE_RANDOM = ");
-  SERIAL_PRINTLN((uint8_t)BLE_ADDR_TYPE_RANDOM);
-  SERIAL_PRINT("BLE_ADDR_TYPE_RPA_PUBLIC = ");
-  SERIAL_PRINTLN((uint8_t)BLE_ADDR_TYPE_RPA_PUBLIC);
-  SERIAL_PRINT("BLE_ADDR_TYPE_RPA_RANDOM = ");
-  SERIAL_PRINTLN((uint8_t)BLE_ADDR_TYPE_RPA_RANDOM);
-
   // T-Display-S3 needs this in order to run off battery
-  #ifdef TDISPLAYS3
+  #if defined(TDISPLAYS3) && !defined(LILYGO_AMOLED)
     pinMode(15, OUTPUT);
     digitalWrite(15, HIGH);
   #endif
 
   // setup display
-  tft.init();
-  tft.setRotation(3);
+  //
+  // if a LilyGo AMOLED device we need to init the amoled device
+  #ifdef LILYGO_AMOLED
+    i = amoled.begin();
+    if (i == 0) {
+      while (1) {
+        SERIAL_PRINT("Unable to initialize AMOLED screen!");
+      }
+    }
+    amoled.setRotation(2);
+    tft.createSprite(amoled.width(), amoled.height());
+    tft.setSwapBytes(1);
+
+    // yeah... LilyGo AMOLED Touch... I'd like to use it eventually, but we're not quite ready for it.
+    if (amoled.hasTouch()) {
+      SERIAL_PRINTLN("hasTouch() is true");
+      amoled.disableTouch();
+    }
+  #else
+    tft.init();
+    tft.setRotation(3);
+  #endif
   reset_screen();
 
   // attach ofr to tft
@@ -3279,8 +3442,26 @@ void setup() {
   #endif
 
   // setup buttons as input
-  pinMode(BUTTON1_PIN, INPUT);
-  pinMode(BUTTON2_PIN, INPUT);
+  //
+  // LilyGo AMOLED pin numbers can be pulled from the amoled object
+  #ifdef LILYGO_AMOLED
+    const BoardsConfigure_t *bc = amoled.getBoardsConfigure();
+    button_pins[0] = (int8_t)(bc->buttonNum > 0 ? bc->pButtons[0] : -1);
+    button_pins[1] = (int8_t)(bc->buttonNum > 1 ? bc->pButtons[1] : -1);
+  #endif
+  //
+  // if both pin numbers are the same, disable button 2
+  if (button_pins[0] == button_pins[1] && button_pins[0] >= 0) {
+    button_pins[1] = -1;
+  }
+  //
+  // set button pins as input
+  if (button_pins[0] >= 0) {
+    pinMode(button_pins[0], INPUT);
+  }
+  if (button_pins[1] >= 0) {
+    pinMode(button_pins[1], INPUT);
+  }
 
   // init bluetooth
   BLEDevice::init("");
@@ -3302,7 +3483,7 @@ void setup() {
 
   // define deep sleep wakeup trigger; if commented out ESP32 goes into hibernation instead of deep sleep and only wakes up with the reset button
   // memory is lost from deep sleep; for our purposes deep sleep and hibernation are the same thing
-  //esp_sleep_enable_ext0_wakeup(WAKEUP_BUTTON, WAKEUP_LEVEL);
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)WAKEUP_BUTTON, WAKEUP_LEVEL);
 
   // initialize the sleep monitor timer
   last_activity = millis();
