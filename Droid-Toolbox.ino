@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.76 : ruthsarian@gmail.com
+/* Droid Toolbox v0.77 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * 
@@ -122,87 +122,6 @@
  *     revisit auto shutoff. can it not require a reset to wake up?
  *     add option, through defines, to rotate display 180 degrees so buttons are on the right
  *
- * HISTORY
- *   v0.76 : Rolled back the automatic button detection for AMOLED devices because V1 basics, which have 2 buttons, are
- *           being detected as only having 1 button. You'll have to manually set the IO pins for the buttons like everyone else.
- *           Thanks to Chrisedge for identifying this issue.
- *   v0.75 : Added support for LilyGo T-Display AMOLED devices, although touch functionality is not used at this time.
- *           If using a LilyGo T-Display AMOLED device you need to have Setup206_LilyGo_T_Display_S3 uncommented in user_setup_select.h for TFT_eSPI library.
- *           Added option to have BUTTON1 behave as both BUTTON1 and BUTTON2 for those people whose device only has one button.
- *           To enable this feature, uncommon SINGLE_BUTTON_MODE below.
- *   v0.74 : When connecting to a droid, the droid's BLE address is saved to non-volatile memory. You can
- *           then quick-connect to that droid in the future, through power-cycles of the toolbox, by holding 
- *           button 2 for more than 1/2 second then releasing it while on the splash screen. This feature
- *           was suggested by HighVoltage on the SWGE discord server.
- *   v0.73 : Added Drum Kit and A-LT personalities.
- *           thanks to Nick T for providing the beacon data of the A-LT droid.
- *   v0.72 : Fix compatibility with recently released ESP32 3.0 core
- *           thanks to Richs1077 and Elcid8687 for bringing this issue to my attention
- *   v0.71 : Fix heap corruption with BLE scan advertisement when building with arduino-esp32 core >= 2.0.15
- *           thanks to dtshepherd for identifying this issue and developing the fix.
- *   v0.70 : Fixed beacon menu font size issues with TTGO T-Display
- *           thanks to Knucklebuster620 for bringing this issue to my attention
- *   v0.69 : The Wayfinder Version 
- *           Toolbox remembers font selection through reboot/power cycle
- *   v0.68 : limited rotating beacons to just location beacon types. reason is that droids will not respond to a droid beacon if it's seen a location beacon within the last 2 hours. 
- *           added a few defines to let you control the interval settings for short and long presses
- *           changed initial interval to 60 seconds
- *   v0.67 : added rotating beacon option; includes abilty to set beacon interval between 60 and 1440 seconds.
- *   v0.66 : added TFGunray font; originally added for demonstration 
- *   v0.65 : added support for custom fonts via OpenFontRenderer (https://github.com/takkaO/OpenFontRender)
- *             - added a few fonts from aurekfonts.github.io that were labeled as free for personal and commercial use
- *             - added several functions (dtb_*) to assist in supporting custom fonts
- *             - complicated display lists further by adding a step to precalculate some font dimensions on font change to help speed up font rendering
- *             - consolidated some defines and functions related to lists
- *             - fell into a stupor trying to get fonts behaving nicely; came out of it with little understanding how this code works
- *           changed the names of a couple location beacons after reviewing existing beacon location data (see: https://www.google.com/maps/d/edit?mid=1pdCcMcTHQzcOOTIz-Lv1uYqqjWI-jDQ)
- *   v0.64 : added a BLE advertising parameter that should prevent other devices from connecting to the toolbox while it is advertising
- *           a beacon. previously, if a device did attempt such a connection, the beacon on the toolbox would stop, but you wouldn't know it.
- *   v0.63 : expert mode can now create droid beacons that will be seen by other toolboxes; you cannot connect to emulated beacons
- *           adding this feature lead me to rewrite a lot of the expert beacon display code
- *           added SERIAL_DEBUG_ENABLE which, if not defined, will prevent messages from being sent over the serial monitor
- *           used the newly created droid beacon feature to identify and a bug with the scanner that caused a crash when encountering an unknown personality chip
- *   v0.62 : added battery/power voltage display on the splash screen. 
- *           displayed value is only updated when splash screen is loaded; this is not a realtime monitor.
- *           thanks to Tom Harris for suggesting this feature and providing some code to work with!
- *   v0.61 : reworked how personality, location, and affiliation data is stored in the code to make modification of that data a little easier.
- *           added ability to display custom names for droids based off their bluetooth address. custom names can be added to the named_droids[] array in the code below.
- *   v0.60 : added ability to select which beacon the droid toolbox will produce
- *           expert beacon mode allows finer control over the beacon; i probably should have hidden it behind a key combination...
- *           added global beacon variable to store the details of the beacon that will be produced
- *           lots of work on the underlying menu system and helper functions
- *           added global variable to track currently selected item in a menu, rather than have a STATE for each menu option
- *           moving more control of the display options (text color, size, etc) to the block of #defines at the top of the code
- *   v0.56 : added a caption to select menus; this puts back functionality present in earlier versions that i just prefer
- *           short button 2 press on scan results now goes back 1 droid (if droids are found) instead of returning to main menu; long button 2 press will return to main menu
- *           created some #defines to control color and font to make customization a little easier
- *           personality chip ID 0x0C now identified as 'D-O' thanks to cre8or on swgediscord.com
- *   v0.55 : Added BD personality to know personalities
- *           Set delay between beacon reactions to 1 minute; BD units CORRECTLY interpret the value of 0x02 as a 10 second delay.
- *   v0.54 : Added volume control
- *           Started work on creating a generic menu system
- *           Centered the play track screen 
- *           Current group and track no longer reset to 1-1 when exiting the play track screen
- *   v0.53 : Added support for T-Display-S3 devices
- *           T-Display-S3 currently requires a modified version of TFT_eSPI which you can get from the T-Display-S3
- *           github repository here: https://github.com/Xinyuan-LilyGO/T-Display-S3 under the lib directory
- *   v0.52 : Fixed typo "CH1-10P" => "C1-10P"
- *   v0.51 : Put BLE notifications back into the code. Any notifications received are displayed in the serial monitor.
- *           Added note to connecting string so people see the droid remote needs to be off before connecting
- *   v0.50 : Added ability to connect to droid from scan results using a long-press of button 1
- *           Droid plays activation sound upon connection
- *           Group and track can be selected and played through the droid.
- *   v0.40 : Added deep sleep/hibernation
- *           Added initial ability to connect to droid with long button 1 press while viewing droid in scan results
- *             Connection is currently a demo; connect, tell droid to play a sound, then disconnect. 
- *             Will improve upon this in the next version.
- *   v0.30 : Long/Short button press detection
- *           Droid report is paged; shows 1 droid at a time
- *           Droid report sorts droids by RSSI value
- *           Added version to splash screen
- *   v0.20 : Added back button from both beacon and scanner.
- *           Location beacon location is randomly selected.
- *   v0.10 : Initial Release
  */
 
 #define USE_OFR_FONTS         // uncomment to use openFontRenderer (see notes above on how to install this library)
@@ -245,7 +164,7 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.76"                 // the version displayed on the splash screen at the lower right; β
+#define MSG_VERSION                         "v0.77"                 // the version displayed on the splash screen at the lower right; β
 
 #ifdef LILYGO_AMOLED
   #define DEFAULT_TEXT_SIZE                 3
@@ -333,7 +252,7 @@
 
 #define DEFAULT_TEXT_FIT_WIDTH              (tft.getViewportWidth() * 0.8)    // used to control the available width value used to calculate the font size needed for a string of text to fit within that space
 
-#define SLEEP_AFTER                         5 * 60 * 1000   // how many milliseconds of inactivity before going to sleep/hibernation
+#define SLEEP_AFTER                         (5 * 60 * 1000) // how many milliseconds of inactivity before going to sleep/hibernation (5 minutes is the default setting)
 #define DEFAULT_BEACON_REACTION_TIME        2               // how many minutes to wait between reactions to the beacon being broadcast; ((esp_random() % 3) + 1)
 #define MAX_BEACON_CHANGE_INTERVAL          120             // this is multiplied by 10. should be no larger than 250.
 #define SHORT_PRESS_INTERVAL_INC            1               // this is multiplied by 10. 
@@ -607,36 +526,33 @@ beacon_t beacon;
   #define TDISPLAYS3
 #endif
 
-#define BUTTON1_PIN       0   // button 1 on the TTGO T-Display and T-Display-S3 is GPIO 0
+#define BUTTON1_PIN       0     // button 1 on the TTGO T-Display and T-Display-S3 is GPIO 0
 #if defined(LILYGO_AMOLED)
-  #define BUTTON2_PIN     -1  // button 2 on the LilyGo AMOLED; if you have a version 1 AMOLED basic change this to 21
-  #define BAT_ADC_PIN     4   // battery monitor pin
+  #define BUTTON2_PIN     -1    // button 2 on the LilyGo AMOLED; if you have a version 1 AMOLED basic change this to 21
+  #define BAT_ADC_PIN     4     // battery monitor pin
 #elif defined(TDISPLAYS3)
-  #define BUTTON2_PIN     14  // button 2 on the T-Display-S3 is GPIO14
-  #define BAT_ADC_PIN     4   // battery monitor pin
+  #define BUTTON2_PIN     14    // button 2 on the T-Display-S3 is GPIO14
+  #define BAT_ADC_PIN     4     // battery monitor pin
 #else
-  #define BUTTON2_PIN     35  // button 2 on the TTGO T-Display is GPIO 35
-  #define BAT_ADC_PIN     34  // battery monitor pin
-  //#undef USE_OFR_FONTS        // force T-Display to not use OFR? i don't think this is necessary.
+  #define BUTTON2_PIN     35    // button 2 on the TTGO T-Display is GPIO 35
+  #define BAT_ADC_PIN     34    // battery monitor pin
+  //#undef USE_OFR_FONTS          // force T-Display to not use OFR? i don't think this is necessary.
 #endif
 
-#define LAZY_DEBOUNCE     10  // time to wait after a button press before considering it a good press
-#define SHORT_PRESS_TIME  500 // maximum time, in milliseconds, that a button can be held before release and be considered a SHORT press
-#define SINGLE_BTN_GRACE  250 // how long after a button press to wait for the next one in single button mode
+#define BTN_UP_STATE      HIGH  // the logic level that identifies if a button is up / not currently pressed; WAKEUP_LEVEL should be set to the opposite value
+#define LAZY_DEBOUNCE     10    // time to wait after a button press before considering it a good press
+#define SHORT_PRESS_TIME  500   // maximum time, in milliseconds, that a button can be held before release and be considered a SHORT press
+#define SINGLE_BTN_GRACE  250   // how long after a button press to wait for the next one in single button mode
 
-#define MAX_DROIDS        20  // maximum number of droids to report on
-#define BLE_SCAN_TIME     5   // how many seconds to scan
+#define MAX_DROIDS        20    // maximum number of droids to report on
+#define BLE_SCAN_TIME     5     // how many seconds to scan
 
-#define PAYLOAD_SIZE      8   // size, in bytes, of a beacon payload
+#define PAYLOAD_SIZE      8     // size, in bytes, of a beacon payload
 #define MSG_LEN_MAX       32
 #define DROID_ADDR_LEN    20
 
-#if defined(ARDUINO_ESP32_DEV)
-#define WAKEUP_BUTTON     BUTTON2_PIN // wake up when button 2 is pressed. this is for T-Displays as they lack an external pullup resistor on button 1
-#else
 #define WAKEUP_BUTTON     BUTTON1_PIN // wake up when button 1 is pressed.
-#endif
-#define WAKEUP_LEVEL      LOW         // wake up from sleep when the button is pressed (LOW)
+#define WAKEUP_LEVEL      LOW         // wake up from sleep when the button is pressed; this should be the opposite of BTN_UP_STATE
 
 // Using these macros to print debug messages will make it easier to disable the printing of those messages by undefining SERIAL_DEBUG_ENABLE
 #ifdef SERIAL_DEBUG_ENABLE
@@ -3289,14 +3205,14 @@ void button1_handler() {
 
 void button2_handler() {
   static uint32_t last_btn2_time = 0;
-  static uint8_t last_btn2_state = HIGH;
+  static uint8_t last_btn2_state = BTN_UP_STATE;
 
   // gather current state of things
   uint8_t now_btn2_state = digitalRead(button_pins[1]);
   uint32_t now_time = millis();
 
   if (now_btn2_state != last_btn2_state && now_time - last_btn2_time > LAZY_DEBOUNCE) {
-    if (now_btn2_state == HIGH) {
+    if (now_btn2_state == BTN_UP_STATE) {
       if (now_time - last_btn2_time > SHORT_PRESS_TIME) {
         button2(LONG_PRESS);
       } else {
@@ -3311,7 +3227,7 @@ void button2_handler() {
 
 void button1_single_handler() {
   static uint32_t last_btn1_time = 0;
-  static uint8_t last_btn1_state = HIGH;
+  static uint8_t last_btn1_state = BTN_UP_STATE;
 
   static uint8_t btn1_press_cnt = 0;
   static uint32_t btn1_grace_end = 0;
@@ -3324,7 +3240,7 @@ void button1_single_handler() {
   if (now_btn1_state != last_btn1_state && now_time - last_btn1_time > LAZY_DEBOUNCE) {
 
     // button is released
-    if (now_btn1_state == HIGH) {
+    if (now_btn1_state == BTN_UP_STATE) {
       //SERIAL_PRINTLN("BUTTON UP");
 
       // record if it was a short or long button press, we'll need this later on
@@ -3462,10 +3378,18 @@ void setup() {
 
   // set button pins as input
   if (button_pins[0] >= 0) {
-    pinMode(button_pins[0], INPUT);
+    #if defined (INPUT_PULLUP) && defined (INPUT_PULLDOWN)
+      pinMode(button_pins[0], (BTN_UP_STATE == HIGH ? INPUT_PULLUP : INPUT_PULLDOWN));
+    #else
+      pinMode(button_pins[0], INPUT);
+    #endif
   }
   if (button_pins[1] >= 0) {
-    pinMode(button_pins[1], INPUT);
+    #if defined (INPUT_PULLUP) && defined (INPUT_PULLDOWN)
+      pinMode(button_pins[1], (BTN_UP_STATE == HIGH ? INPUT_PULLUP : INPUT_PULLDOWN));
+    #else
+      pinMode(button_pins[0], INPUT);
+    #endif
   }
 
   // init bluetooth
