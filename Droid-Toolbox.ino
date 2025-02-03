@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.77 : ruthsarian@gmail.com
+/* Droid Toolbox v0.78 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * 
@@ -131,6 +131,7 @@
 //#define SERIAL_DEBUG_ENABLE   // uncomment to enable serial debug/monitor messages
                               // if using serial debug, you may need to select HUGE APP from the partition scheme option under tools menu
 
+#include <driver/rtc_io.h>
 #ifdef LILYGO_AMOLED
   #include <LilyGo_AMOLED.h>
 #endif
@@ -164,7 +165,7 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.77"                 // the version displayed on the splash screen at the lower right; β
+#define MSG_VERSION                         "v0.78"                 // the version displayed on the splash screen at the lower right; β
 
 #ifdef LILYGO_AMOLED
   #define DEFAULT_TEXT_SIZE                 3
@@ -544,15 +545,23 @@ beacon_t beacon;
 #define SHORT_PRESS_TIME  500   // maximum time, in milliseconds, that a button can be held before release and be considered a SHORT press
 #define SINGLE_BTN_GRACE  250   // how long after a button press to wait for the next one in single button mode
 
+// WAKEUP_BUTTON defines the button that, when pressed, will wake the toolbox up from sleep. the reset button will also do this.
+// The wakeup button needs to be an RTC GPIO so that the pullup/pulldown resistors will have power while in deep sleep.
+// If you do not want to use a wakeup button, comment out the #define.
+//
+// Lilygo T-Display variants all have button 1 on GPIO 0 which is an RTC GPIO pin.
+//
+// Reference: 
+//   ESP32    https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/gpio.html
+//   ESP32S3  https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-reference/peripherals/gpio.html
+#define WAKEUP_BUTTON     BUTTON1_PIN
+
 #define MAX_DROIDS        20    // maximum number of droids to report on
 #define BLE_SCAN_TIME     5     // how many seconds to scan
 
 #define PAYLOAD_SIZE      8     // size, in bytes, of a beacon payload
 #define MSG_LEN_MAX       32
 #define DROID_ADDR_LEN    20
-
-#define WAKEUP_BUTTON     BUTTON1_PIN // wake up when button 1 is pressed.
-#define WAKEUP_LEVEL      LOW         // wake up from sleep when the button is pressed; this should be the opposite of BTN_UP_STATE
 
 // Using these macros to print debug messages will make it easier to disable the printing of those messages by undefining SERIAL_DEBUG_ENABLE
 #ifdef SERIAL_DEBUG_ENABLE
@@ -3318,6 +3327,23 @@ void button_handler() {
   #endif
 }
 
+#ifdef SERIAL_DEBUG_ENABLE
+void print_wakeup_reason() {
+  esp_sleep_wakeup_cause_t wakeup_reason;
+
+  wakeup_reason = esp_sleep_get_wakeup_cause();
+
+  switch (wakeup_reason) {
+    case ESP_SLEEP_WAKEUP_EXT0:     SERIAL_PRINTLN("Wakeup caused by external signal using RTC_IO"); break;
+    case ESP_SLEEP_WAKEUP_EXT1:     SERIAL_PRINTLN("Wakeup caused by external signal using RTC_CNTL"); break;
+    case ESP_SLEEP_WAKEUP_TIMER:    SERIAL_PRINTLN("Wakeup caused by timer"); break;
+    case ESP_SLEEP_WAKEUP_TOUCHPAD: SERIAL_PRINTLN("Wakeup caused by touchpad"); break;
+    case ESP_SLEEP_WAKEUP_ULP:      SERIAL_PRINTLN("Wakeup caused by ULP program"); break;
+    default:                        SERIAL_PRINTLN("Wakeup was not caused by deep sleep: %d\n", wakeup_reason); break;
+  }
+}
+#endif
+
 void setup() {
   uint8_t i;
 
@@ -3328,6 +3354,10 @@ void setup() {
   #if defined(TDISPLAYS3) && !defined(LILYGO_AMOLED)
     pinMode(15, OUTPUT);
     digitalWrite(15, HIGH);
+  #endif
+
+  #ifdef SERIAL_DEBUG_ENABLE
+    print_wakeup_reason();
   #endif
 
   // setup display
@@ -3360,37 +3390,33 @@ void setup() {
     ofr.setDrawer(tft);  
   #endif
 
-  // while lilygo's amoled object will tell me how many buttons there are,
-  // it doesn't detect v1 basic AMOLED devices which have 2 buttons; so this
-  // code is useless :(
-  /*
-  #ifdef LILYGO_AMOLED
-    const BoardsConfigure_t *bc = amoled.getBoardsConfigure();
-    button_pins[0] = (int8_t)(bc->buttonNum > 0 ? bc->pButtons[0] : -1);
-    button_pins[1] = (int8_t)(bc->buttonNum > 1 ? bc->pButtons[1] : -1);
-  #endif
-  */
-
   // don't try to use two buttons as the same button
   if (button_pins[0] == button_pins[1] && button_pins[0] >= 0) {
     button_pins[1] = -1;
   }
 
-  // set button pins as input
+  // set pin mode for button pins to input
   if (button_pins[0] >= 0) {
-    #if defined (INPUT_PULLUP) && defined (INPUT_PULLDOWN)
-      pinMode(button_pins[0], (BTN_UP_STATE == HIGH ? INPUT_PULLUP : INPUT_PULLDOWN));
-    #else
-      pinMode(button_pins[0], INPUT);
-    #endif
+    pinMode(button_pins[0], INPUT);
   }
   if (button_pins[1] >= 0) {
-    #if defined (INPUT_PULLUP) && defined (INPUT_PULLDOWN)
-      pinMode(button_pins[1], (BTN_UP_STATE == HIGH ? INPUT_PULLUP : INPUT_PULLDOWN));
-    #else
-      pinMode(button_pins[0], INPUT);
-    #endif
+    pinMode(button_pins[1], INPUT);
   }
+
+  // if defined, enable wakeup button
+  #ifdef WAKEUP_BUTTON
+    // define deep sleep wakeup trigger; if commented out ESP32 goes into hibernation instead of deep sleep and only wakes up with the reset button
+    esp_sleep_enable_ext0_wakeup((gpio_num_t)WAKEUP_BUTTON, (BTN_UP_STATE == HIGH ? 0 : 1));
+
+    // configure the wakeup button to be pulled high or low using internal resistors so button press works while in deep sleep
+    if (BTN_UP_STATE == HIGH) {
+      rtc_gpio_pullup_en((gpio_num_t)WAKEUP_BUTTON);
+      rtc_gpio_pulldown_dis((gpio_num_t)WAKEUP_BUTTON);
+    } else {
+      rtc_gpio_pullup_dis((gpio_num_t)WAKEUP_BUTTON);
+      rtc_gpio_pulldown_en((gpio_num_t)WAKEUP_BUTTON);
+    }
+  #endif
 
   // init bluetooth
   BLEDevice::init("");
@@ -3409,10 +3435,6 @@ void setup() {
   pAdvertising = BLEDevice::getAdvertising();
   oScanResponseData.setName(ble_adv_name);
   pAdvertising->setScanResponseData(oScanResponseData);
-
-  // define deep sleep wakeup trigger; if commented out ESP32 goes into hibernation instead of deep sleep and only wakes up with the reset button
-  // memory is lost from deep sleep; for our purposes deep sleep and hibernation are the same thing
-  esp_sleep_enable_ext0_wakeup((gpio_num_t)WAKEUP_BUTTON, WAKEUP_LEVEL);
 
   // initialize the sleep monitor timer
   last_activity = millis();

@@ -11,6 +11,13 @@ Changelog format is based on [Keep a Changelog](https://keepachangelog.com/en/1.
 - Reorganizing the code by breaking it up into several, smaller files with
   each one containing shared functionatliy (ble.c, beacons.c, menus.c, etc.)
 
+## [0.78] - 2025-02-03
+
+### Fixed
+
+- Fixed a bug preventing the toolbox from staying in deep sleep until a button
+  is pressed.
+
 ## [0.77] - 2025-01-29
 
 ### Added
