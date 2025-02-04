@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.78 : ruthsarian@gmail.com
+/* Droid Toolbox v0.79 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * 
@@ -52,40 +52,27 @@
  *
  * TTGO T-Display Board Configuration (defaults)
  *   Board: ESP32 Dev Module
- *   Upload Speed: 921600
- *   CPU Freq: 240MHz (WiFI/BT)
- *   Flash Freq: 80MHz
- *   Flash Mode: QIO
  *   Flash Size: 4MB (32Mb)
  *   Partition Scheme: Huge App (3MB No OTA/1MB SPIFFS)
- *   Core Debug Level: None
  *   PSRAM: Disabled
  * 
  * T-Display-S3 Board Configuration (defaults)
  *   Board: ESP32S3 Dev Module
- *   Upload Speed: 921600
- *   CPU Freq: 240MHz (WiFI/BT)
- *   Flash Mode: QIO 80MHz
- *   Flash Size: 16MB (128Mb)
- *   Partition Scheme: Huge App (3MB No OTA/1MB SPIFFS)
- *   Core Debug Level: None
- *   PSRAM: OPI PSRAM 
  *   USB CDC On Boot: Enabled
- *   JTAG Adapter: Integrated USB JTAG
- *   USB Mode: Hardware CDC and JTAG
+ *   Flash Size: 16MB (128Mb)
+ *   Partition Scheme: 16M Flash(3M APP/9.9MB FATFS)
+ *   PSRAM: OPI PSRAM
+ *   Upload Mode: UART0/Hardware CDC
+ *   USB Mode: CDC and JTAG
  * 
  * T-Display-S3 AMOLED (Basic V1, Basic V2, Touch)
  *   Board: ESP32S3 Dev Module
- *   CPU Freq: 240MHz (WiFI/BT)
- *   Flash Mode: QIO 80MHz
+ *   USB CDC On Boot: Enabled
  *   Flash Size: 16MB (128Mb)
  *   Partition Scheme: 16M Flash(3M APP/9.9MB FATFS)
- *   Core Debug Level: None
- *   PSRAM: OPI PSRAM 
- *   USB CDC On Boot: Enabled
- *   JTAG Adapter: Integrated USB JTAG
- *   USB Mode: Hardware CDC and JTAG
+ *   PSRAM: OPI PSRAM
  *   Upload Mode: UART0/Hardware CDC
+ *   USB Mode: CDC and JTAG
  * 
  * References
  *   Arduino IDE setup: https://www.youtube.com/watch?v=b8254--ibmM
@@ -142,6 +129,7 @@
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
 
+// stop compilation under certain combinations of ESP32 and TFT_eSPI versions
 #if (ESP_ARDUINO_VERSION_MAJOR >= 3) && defined(_TFT_eSPI_ESP32H_) && !defined(GPIO_PIN_COUNT)
     #error Please downgrade your ESP32 core to 2.0 or add #include "driver/gpio.h" to TFT_eSPI_ESP32.h and TFT_eSPI_ESP32_S3.h in the TFT_eSPI library.
 #endif
@@ -165,7 +153,7 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.78"                 // the version displayed on the splash screen at the lower right; β
+#define MSG_VERSION                         "v0.79"                 // the version displayed on the splash screen at the lower right; β
 
 #ifdef LILYGO_AMOLED
   #define DEFAULT_TEXT_SIZE                 3
@@ -1578,7 +1566,7 @@ bool droid_connect(const char *addr_to_connect) {
     // store this address to NVS
     #ifdef USE_NVS
       SERIAL_PRINTLN("Saving droid BLE address.");
-      preferences.putString("saved_addr", droids[current_droid].pAdvertisedDevice->getAddress().toString());
+      preferences.putString("saved_addr", droids[current_droid].pAdvertisedDevice->getAddress().toString().c_str());
     #endif
   } else {
     SERIAL_PRINT("Manually connecting to ");

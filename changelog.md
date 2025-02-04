@@ -11,6 +11,14 @@ Changelog format is based on [Keep a Changelog](https://keepachangelog.com/en/1.
 - Reorganizing the code by breaking it up into several, smaller files with
   each one containing shared functionatliy (ble.c, beacons.c, menus.c, etc.)
 
+## [0.79] = 2025-02-03
+
+### Fixed
+
+- Fixed a compile error when building with ESP32 2.x.x.
+- Updated comments at top of INO file to indicate only required board settings 
+  and removed the settings that aren't required.
+
 ## [0.78] - 2025-02-03
 
 ### Fixed
