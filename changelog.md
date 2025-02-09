@@ -11,11 +11,19 @@ Changelog format is based on [Keep a Changelog](https://keepachangelog.com/en/1.
 - Reorganizing the code by breaking it up into several, smaller files with
   each one containing shared functionatliy (ble.c, beacons.c, menus.c, etc.)
 
+## [0.80] = 2025-02-09
+
+### Added
+
+- AMOLED users can change the screen brightness with a short button 2 press
+  on the splash screen. This setting will be retained through power cycles.
+
 ## [0.79] = 2025-02-03
 
 ### Fixed
 
 - Fixed a compile error when building with ESP32 2.x.x.
+  Thanks to Brandon for identifying this issue.
 - Updated comments at top of INO file to indicate only required board settings 
   and removed the settings that aren't required.
 

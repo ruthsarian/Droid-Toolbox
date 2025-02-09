@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.79 : ruthsarian@gmail.com
+/* Droid Toolbox v0.80 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * 
@@ -153,7 +153,7 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.79"                 // the version displayed on the splash screen at the lower right; β
+#define MSG_VERSION                         "v0.80"                 // the version displayed on the splash screen at the lower right; β
 
 #ifdef LILYGO_AMOLED
   #define DEFAULT_TEXT_SIZE                 3
@@ -2915,6 +2915,7 @@ void button2(button_press_t press_type) {
               delay(2000);
               state = SPLASH;
             }
+            tft_update = true;
           } else {
             SERIAL_PRINTLN("No saved address found.");
             SERIAL_PRINT("saved_addr length is ");
@@ -2922,7 +2923,15 @@ void button2(button_press_t press_type) {
           }
         } else {
 
-      #endif
+      #endif  // USE_NVS
+
+      // use button 2 short press to change screen brightness for AMOLED devices
+      #ifdef LILYGO_AMOLED
+        amoled.setBrightness((uint8_t)(amoled.getBrightness() + 32));
+        #ifdef USE_NVS
+          preferences.putUChar("dtb_brightness", amoled.getBrightness());
+        #endif
+      #else
 
         // before exiting the splash screen, store the current font to NVS
         #if defined (USE_OFR_FONTS) && defined (USE_NVS)
@@ -2931,13 +2940,14 @@ void button2(button_press_t press_type) {
 
         state = TOP_MENU;
         selected_item = 0;
+        tft_update = true;
+
+      #endif
 
       // close out the if/else block if we're using storage
       #ifdef USE_NVS
         }
       #endif
-
-      tft_update = true;
       break;
 
     case TOP_MENU:
@@ -3359,6 +3369,7 @@ void setup() {
       }
     }
     amoled.setRotation(2);
+    amoled.setBrightness(159);    // set screen brightness, 0-255. AMOLED_DEFAULT_BRIGHTNESS = 175
     tft.createSprite(amoled.width(), amoled.height());
     tft.setSwapBytes(1);
 
@@ -3465,6 +3476,12 @@ void setup() {
   #ifdef USE_NVS
     preferences.begin(PREF_APP_NAME, false); 
     //preferences.clear();
+
+    // load screen brightness
+    #ifdef LILYGO_AMOLED
+      amoled.setBrightness(dtb_font = (uint8_t)preferences.getUChar("dtb_brightness", 159));
+      //reset_screen();
+    #endif
 
     // load stored font
     #ifdef USE_OFR_FONTS
