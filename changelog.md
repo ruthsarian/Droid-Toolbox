@@ -11,6 +11,20 @@ Changelog format is based on [Keep a Changelog](https://keepachangelog.com/en/1.
 - Reorganizing the code by breaking it up into several, smaller files with
   each one containing shared functionatliy (ble.c, beacons.c, menus.c, etc.)
 
+## [0.81] = 2025-07-28
+
+### Fixed
+
+- jmachuca77 noted that newer released of OpenFontRenderer were causing the 
+  text to appear as only white. it seems that OFR's drawString() function is
+  ignoring the text color value. however setting the color via 
+  setFontColor() still works. I've updated dtb_draw_string() to do this
+  prior to calling drawString().
+- discovered newer versions of the Espressif ESP32 core are alignign their
+  macros with the NimBLE standard. I've updated the code to use these new
+  macros and to use the old macros if the new ones do not exist in order to
+  keep older cores functional with the droid toolbox code.
+
 ## [0.80] = 2025-02-09
 
 ### Added

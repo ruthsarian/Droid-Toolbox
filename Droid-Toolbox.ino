@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.80 : ruthsarian@gmail.com
+/* Droid Toolbox v0.81 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * 
@@ -92,6 +92,12 @@
  *     https://espressif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/api/preferences.html
  *
  * TODO
+ *   screen:
+ *    brightness control for T-Display and T-Display-S3
+ *      both currently run at max brightness
+ *      need to PWM the backlight control PIN to control brightness
+ *      GPIO38 on T-Display-S3
+ *      GPIO4 on T-Display
  *   scanner:
  *     search for specific droid/location
  *        constant scan; alert when encountering the specified beacon
@@ -129,6 +135,15 @@
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
 
+// newer versions of espressif esp32 core use NimBLE conventions. these defines should allow older
+// versions of the core to continue to be compatible with this code 
+#ifndef BLE_GAP_CONN_MODE_NON
+  #define BLE_GAP_CONN_MODE_NON ADV_TYPE_NONCONN_IND
+#endif
+#ifndef BLE_ADDR_RANDOM
+  #define BLE_ADDR_RANDOM BLE_ADDR_TYPE_RANDOM
+#endif
+
 // stop compilation under certain combinations of ESP32 and TFT_eSPI versions
 #if (ESP_ARDUINO_VERSION_MAJOR >= 3) && defined(_TFT_eSPI_ESP32H_) && !defined(GPIO_PIN_COUNT)
     #error Please downgrade your ESP32 core to 2.0 or add #include "driver/gpio.h" to TFT_eSPI_ESP32.h and TFT_eSPI_ESP32_S3.h in the TFT_eSPI library.
@@ -153,7 +168,7 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.80"                 // the version displayed on the splash screen at the lower right; β
+#define MSG_VERSION                         "v0.81"                 // the version displayed on the splash screen at the lower right; β
 
 #ifdef LILYGO_AMOLED
   #define DEFAULT_TEXT_SIZE                 3
@@ -1151,6 +1166,9 @@ void dtb_draw_string(const char* str, int32_t draw_x, int32_t draw_y, uint32_t d
     }
 
     // draw the string
+    //ofr.setBackgroundColor(TFT_BLACK);
+    //ofr.setFontColor(text_color, TFT_BLACK);
+    ofr.setFontColor(text_color);
     ofr.drawString(str, draw_x, draw_y, text_color, ofr.getBackgroundColor(), ofr.getLayout());
   }
 
@@ -1378,7 +1396,7 @@ void set_payload_from_beacon() {
   pAdvertising->setAdvertisementData(*pAdvertisementData);
 
   // prevent connection attempts while advertising a beacon
-  pAdvertising->setAdvertisementType(ADV_TYPE_NONCONN_IND);
+  pAdvertising->setAdvertisementType(BLE_GAP_CONN_MODE_NON);
   pAdvertising->setScanFilter(false, true);
 }
 
@@ -1572,7 +1590,7 @@ bool droid_connect(const char *addr_to_connect) {
     SERIAL_PRINT("Manually connecting to ");
     SERIAL_PRINTLN(addr_to_connect);
     BLEAddress connect_address(addr_to_connect);
-    if (!pClient->connect(connect_address, BLE_ADDR_TYPE_RANDOM)) {
+    if (!pClient->connect(connect_address, BLE_ADDR_RANDOM)) {
       SERIAL_PRINTLN("Connection failed.");
       return false;
     }
@@ -3591,6 +3609,7 @@ void loop() {
       delay(100);
       esp_deep_sleep_start();
     } else {
+      // TODO: dim the screen; add check to brighten it upon user action
       last_activity = millis();
     }
   }
