@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.81 : ruthsarian@gmail.com
+/* Droid Toolbox v0.82 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * 
@@ -168,7 +168,7 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.81"                 // the version displayed on the splash screen at the lower right; β
+#define MSG_VERSION                         "v0.82"                 // the version displayed on the splash screen at the lower right; β
 
 #ifdef LILYGO_AMOLED
   #define DEFAULT_TEXT_SIZE                 3
@@ -336,8 +336,8 @@ typedef struct {
 //
 personality_t droid_personalities[] = {
 //  ID,   NAME,         AFF,  E
-  { 0x01, "R Unit",     0x01, 1},
-  { 0x02, "BB Unit",    0x01, 1},
+  { 0x01, "R-Series",   0x01, 1},
+  { 0x02, "BB-Series",  0x01, 1},
   { 0x03, "Blue",       0x05, 1},
   { 0x04, "Gray",       0x01, 1},
   { 0x05, "Red",        0x09, 1},
@@ -346,12 +346,12 @@ personality_t droid_personalities[] = {
   { 0x08, "Black",      0x09, 1},
   { 0x09, "CB-23",      0x01, 1},
   { 0x0A, "Yellow",     0x05, 1},
-  { 0x0B, "C1-10P",     0x05, 1},
+  { 0x0B, "C1-Series",  0x05, 1},
   { 0x0C, "D-O",        0x05, 1},
   { 0x0D, "Blue 2",     0x01, 1},
   { 0x0E, "BD Unit",    0x05, 1},
   { 0x0F, "A-LT Unit",  0x01, 1},
-  { 0x10, "Drum Kit",   0x01, 1},  
+  { 0x10, "Drum Kit",   0x01, 1},
 };
 
 #define DROID_PERSONALITIES_SIZE sizeof(droid_personalities)/sizeof(personality_t)

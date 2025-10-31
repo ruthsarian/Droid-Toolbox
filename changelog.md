@@ -11,6 +11,13 @@ Changelog format is based on [Keep a Changelog](https://keepachangelog.com/en/1.
 - Reorganizing the code by breaking it up into several, smaller files with
   each one containing shared functionatliy (ble.c, beacons.c, menus.c, etc.)
 
+## [0.82] = 2025-10-30
+
+### Changed
+ - change "R-Unit" to "R-Series" and "BB-Unit" to "BB-Series" to reflect
+   correct nomenclature when referring to droids. Also changed chopper
+   to "C1-Series" as the C1 series droids share the same base personality.
+
 ## [0.81] = 2025-07-28
 
 ### Fixed
