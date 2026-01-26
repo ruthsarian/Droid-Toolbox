@@ -11,6 +11,13 @@ Changelog format is based on [Keep a Changelog](https://keepachangelog.com/en/1.
 - Reorganizing the code by breaking it up into several, smaller files with
   each one containing shared functionatliy (ble.c, beacons.c, menus.c, etc.)
 
+## [0.83] = 2026-01-25
+
+### Fixed
+ - ESP32 core 3.3.6 introduced an issue with how BLE is initialized, causing
+   a boot loop. The code was calling BLEDevice::init("") with an empty string.
+   The fix is to pass a string, any string, to init().
+
 ## [0.82] = 2025-10-30
 
 ### Changed

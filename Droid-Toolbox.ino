@@ -1,4 +1,4 @@
-/* Droid Toolbox v0.82 : ruthsarian@gmail.com
+/* Droid Toolbox v0.83 : ruthsarian@gmail.com
  * 
  * A program to work with droids from the Droid Depot at Galaxy's Edge.
  * 
@@ -168,7 +168,7 @@
 
 // CUSTOMIZATIONS BEGIN -- These values can be changed to alter Droid Toolbox's behavior.
 
-#define MSG_VERSION                         "v0.82"                 // the version displayed on the splash screen at the lower right; β
+#define MSG_VERSION                         "v0.83"                 // the version displayed on the splash screen at the lower right; β
 
 #ifdef LILYGO_AMOLED
   #define DEFAULT_TEXT_SIZE                 3
@@ -3436,7 +3436,7 @@ void setup() {
   #endif
 
   // init bluetooth
-  BLEDevice::init("");
+  BLEDevice::init(ble_adv_name);
 
   // setup the BLE client
   pClient = BLEDevice::createClient();
